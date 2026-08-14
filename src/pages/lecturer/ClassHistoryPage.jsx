@@ -23,6 +23,10 @@ export default function ClassHistoryPage() {
 
   const courseById = useMemo(() => Object.fromEntries(courses.map((c) => [c.id, c])), [courses])
   const batchById = useMemo(() => Object.fromEntries(batches.map((b) => [b.id, b])), [batches])
+  const visibleReports = useMemo(
+    () => reports.filter((report) => report.paymentProcessed !== true),
+    [reports]
+  )
 
   const columns = [
     {
@@ -76,10 +80,10 @@ export default function ClassHistoryPage() {
 
       <DataTable
         columns={columns}
-        data={reports}
+        data={visibleReports}
         loading={loading}
         emptyTitle="No class history yet"
-        emptyDescription="Reports you save or submit will show up here."
+        emptyDescription="Unpaid reports you save or submit will show up here."
       />
     </div>
   )

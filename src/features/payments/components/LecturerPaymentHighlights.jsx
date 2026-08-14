@@ -92,6 +92,7 @@ export function LecturerPaymentHighlights({
       target={row.rule.monthlyClassCount}
       amount={row.amount}
       finalPayment={row.finalPayment}
+      paid={row.alreadyPaid}
     />
   )
 

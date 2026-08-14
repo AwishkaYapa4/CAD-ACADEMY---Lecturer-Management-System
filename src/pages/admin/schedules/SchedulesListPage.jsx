@@ -22,9 +22,10 @@ import { useCourses } from '@/features/courses/hooks/useCourses'
 import { useLecturers } from '@/features/lecturers/hooks/useLecturers'
 import { ScheduleFormDialog } from '@/features/schedules/components/ScheduleFormDialog'
 import { useCancelSchedule, useSchedules } from '@/features/schedules/hooks/useSchedules'
+import { monthKeyFor } from '@/features/payments/utils/monthlyCalc'
 import { toDate } from '@/utils/formatters'
 
-const EMPTY_FILTERS = { lecturerId: '', courseId: '', batchId: '', status: '', dateFrom: '', dateTo: '' }
+const EMPTY_FILTERS = { lecturerId: '', courseId: '', batchId: '', status: '' }
 
 export default function SchedulesListPage() {
   const { data: schedules, loading, refetch } = useSchedules()
@@ -34,6 +35,7 @@ export default function SchedulesListPage() {
   const cancelSchedule = useCancelSchedule()
 
   const [search, setSearch] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(monthKeyFor())
   const [filters, setFilters] = useState(EMPTY_FILTERS)
   const [formState, setFormState] = useState({ open: false, schedule: null })
   const [cancelTarget, setCancelTarget] = useState(null)
@@ -57,8 +59,7 @@ export default function SchedulesListPage() {
       if (filters.status && schedule.status !== filters.status) return false
 
       const classDate = toDate(schedule.classDate)
-      if (filters.dateFrom && classDate && classDate < new Date(filters.dateFrom)) return false
-      if (filters.dateTo && classDate && classDate > new Date(`${filters.dateTo}T23:59:59`)) return false
+      if (selectedMonth && (!classDate || monthKeyFor(classDate) !== selectedMonth)) return false
 
       if (!query) return true
       const course = courseById[schedule.courseId]
@@ -70,7 +71,7 @@ export default function SchedulesListPage() {
         batch?.batchCode?.toLowerCase().includes(query)
       )
     })
-  }, [schedules, search, filters, courseById, lecturerById, batchById])
+  }, [schedules, search, selectedMonth, filters, courseById, lecturerById, batchById])
 
   const columns = [
     {
@@ -170,13 +171,21 @@ export default function SchedulesListPage() {
       />
 
       <div className="space-y-3">
-        <div className="relative max-w-xs">
-          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative max-w-xs">
+            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by course, batch, lecturer..."
+              className="pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           <Input
-            placeholder="Search by course, batch, lecturer..."
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="w-full sm:w-44"
           />
         </div>
         <FilterBar
@@ -207,12 +216,6 @@ export default function SchedulesListPage() {
           ]}
           values={filters}
           onChange={setFilter}
-          dateRange={{
-            from: filters.dateFrom,
-            to: filters.dateTo,
-            onFromChange: (value) => setFilter('dateFrom', value),
-            onToChange: (value) => setFilter('dateTo', value),
-          }}
           active={filtersActive}
           onClear={() => setFilters(EMPTY_FILTERS)}
         />

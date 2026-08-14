@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from 'react-router-dom'
-import { Loader2, LogIn } from 'lucide-react'
+import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { z } from 'zod'
 
@@ -35,6 +35,7 @@ export function LoginForm({ role }) {
   const { login, logout } = useAuth()
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
+  const [passwordVisible, setPasswordVisible] = useState(false)
 
   const form = useForm({
     resolver: zodResolver(loginSchema),
@@ -105,12 +106,25 @@ export function LoginForm({ role }) {
                 </Link>
               </div>
               <FormControl>
-                <Input
-                  type="password"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  {...field}
-                />
+                <div className="relative">
+                  <Input
+                    type={passwordVisible ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    className="pr-9"
+                    {...field}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPasswordVisible((v) => !v)}
+                    className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {passwordVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    <span className="sr-only">
+                      {passwordVisible ? 'Hide password' : 'Show password'}
+                    </span>
+                  </button>
+                </div>
               </FormControl>
               <FormMessage />
             </FormItem>

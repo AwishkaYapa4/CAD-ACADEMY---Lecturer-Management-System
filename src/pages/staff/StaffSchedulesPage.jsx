@@ -17,6 +17,7 @@ import { SCHEDULE_STATUS } from '@/constants/statuses'
 import { useBatches } from '@/features/batches/hooks/useBatches'
 import { useCourses } from '@/features/courses/hooks/useCourses'
 import { useLecturers } from '@/features/lecturers/hooks/useLecturers'
+import { monthKeyFor } from '@/features/payments/utils/monthlyCalc'
 import { useSchedules } from '@/features/schedules/hooks/useSchedules'
 import { toDate } from '@/utils/formatters'
 
@@ -28,6 +29,7 @@ export default function StaffSchedulesPage() {
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [selectedMonth, setSelectedMonth] = useState(monthKeyFor())
 
   const batchById = useMemo(() => Object.fromEntries(batches.map((b) => [b.id, b])), [batches])
   const courseById = useMemo(() => Object.fromEntries(courses.map((c) => [c.id, c])), [courses])
@@ -41,6 +43,8 @@ export default function StaffSchedulesPage() {
     return schedules.filter((schedule) => {
       const matchesStatus = statusFilter === 'all' || schedule.status === statusFilter
       if (!matchesStatus) return false
+      const classDate = toDate(schedule.classDate)
+      if (selectedMonth && (!classDate || monthKeyFor(classDate) !== selectedMonth)) return false
       if (!query) return true
       return (
         courseById[schedule.courseId]?.name?.toLowerCase().includes(query) ||
@@ -48,7 +52,7 @@ export default function StaffSchedulesPage() {
         batchById[schedule.batchId]?.batchCode?.toLowerCase().includes(query)
       )
     })
-  }, [schedules, search, statusFilter, courseById, lecturerById, batchById])
+  }, [schedules, search, statusFilter, selectedMonth, courseById, lecturerById, batchById])
 
   const columns = [
     {
@@ -116,6 +120,12 @@ export default function StaffSchedulesPage() {
             <SelectItem value={SCHEDULE_STATUS.CANCELLED}>Cancelled</SelectItem>
           </SelectContent>
         </Select>
+        <Input
+          type="month"
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+          className="w-full sm:w-44"
+        />
       </div>
 
       <DataTable columns={columns} data={filtered} loading={loading} emptyTitle="No classes scheduled" />

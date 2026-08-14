@@ -23,6 +23,7 @@ import { useCourses } from '@/features/courses/hooks/useCourses'
 import { useLecturers } from '@/features/lecturers/hooks/useLecturers'
 import { useScheduleMaterials } from '@/features/materials/hooks/useMaterials'
 import { getMaterialDownloadUrl } from '@/features/materials/services/materialService'
+import { monthKeyFor } from '@/features/payments/utils/monthlyCalc'
 import { paymentsCollection } from '@/features/payments/services/paymentService'
 import { useSchedules } from '@/features/schedules/hooks/useSchedules'
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc'
@@ -53,7 +54,7 @@ function buildTimeline({ schedule, report, payment, materials }) {
   return events.sort((a, b) => a.date - b.date)
 }
 
-const EMPTY_FILTERS = { lecturerId: '', courseId: '', batchId: '', status: '', dateFrom: '', dateTo: '' }
+const EMPTY_FILTERS = { lecturerId: '', courseId: '', batchId: '', status: '' }
 
 function ReportDetailSheet({ report, lecturer, batch, schedule, open, onOpenChange }) {
   const { data: materials } = useScheduleMaterials(report?.id)
@@ -159,6 +160,7 @@ export default function ClassReportsPage() {
   const { data: lecturers } = useLecturers()
   const { data: schedules } = useSchedules()
   const [search, setSearch] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(monthKeyFor())
   const [selected, setSelected] = useState(null)
   const [filters, setFilters] = useState(EMPTY_FILTERS)
 
@@ -182,9 +184,8 @@ export default function ClassReportsPage() {
       if (filters.batchId && report.batchId !== filters.batchId) return false
       if (filters.status && report.status !== filters.status) return false
 
-      const reportDate = toDate(report.submittedAt ?? report.createdAt)
-      if (filters.dateFrom && reportDate && reportDate < new Date(filters.dateFrom)) return false
-      if (filters.dateTo && reportDate && reportDate > new Date(`${filters.dateTo}T23:59:59`)) return false
+      const reportMonthDate = toDate(scheduleById[report.id]?.classDate ?? report.submittedAt ?? report.createdAt)
+      if (selectedMonth && (!reportMonthDate || monthKeyFor(reportMonthDate) !== selectedMonth)) return false
 
       if (!query) return true
       const lecturer = lecturerById[report.lecturerId]
@@ -195,7 +196,7 @@ export default function ClassReportsPage() {
         course?.name?.toLowerCase().includes(query)
       )
     })
-  }, [reports, search, filters, lecturerById, courseById])
+  }, [reports, search, selectedMonth, filters, lecturerById, courseById, scheduleById])
 
   const columns = [
     {
@@ -259,13 +260,21 @@ export default function ClassReportsPage() {
       <PageHeader title="Class Reports" description="All lecturer-submitted class reports." />
 
       <div className="space-y-3">
-        <div className="relative max-w-xs">
-          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative max-w-xs">
+            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by lecturer, course, topic..."
+              className="pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           <Input
-            placeholder="Search by lecturer, course, topic..."
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            type="month"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="w-full sm:w-44"
           />
         </div>
         <FilterBar
@@ -296,12 +305,6 @@ export default function ClassReportsPage() {
           ]}
           values={filters}
           onChange={setFilter}
-          dateRange={{
-            from: filters.dateFrom,
-            to: filters.dateTo,
-            onFromChange: (value) => setFilter('dateFrom', value),
-            onToChange: (value) => setFilter('dateTo', value),
-          }}
           active={filtersActive}
           onClear={() => setFilters(EMPTY_FILTERS)}
         />

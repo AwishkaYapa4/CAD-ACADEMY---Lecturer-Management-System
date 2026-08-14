@@ -1,0 +1,64 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function role() {
+      return isSignedIn() && userDoc().data.active == true ? userDoc().data.role : null;
+    }
+
+    function myLecturerId() {
+      return isSignedIn() ? userDoc().data.get('lecturerId', null) : null;
+    }
+
+    function isAdmin() {
+      return role() == 'admin';
+    }
+
+    function isStaffOrAdmin() {
+      return role() == 'staff' || isAdmin();
+    }
+
+    function isValidMaterial() {
+      return request.resource.size < 25 * 1024 * 1024
+        && request.resource.contentType.matches(
+             'application/pdf'
+             + '|application/msword'
+             + '|application/vnd\\.openxmlformats-officedocument\\.wordprocessingml\\.document'
+             + '|application/vnd\\.ms-powerpoint'
+             + '|application/vnd\\.openxmlformats-officedocument\\.presentationml\\.presentation'
+             + '|application/(x-)?zip(-compressed)?'
+             + '|image/(jpeg|png)'
+           );
+    }
+
+    // class-materials/{lecturerId}/{scheduleId}/{fileName}
+    // `lecturerId` is the lecturers/{lecturerId} doc id, not the Auth uid —
+    // matches myLecturerId() so a lecturer can never read, upload into, or
+    // overwrite another lecturer's folder.
+    match /class-materials/{lecturerId}/{scheduleId}/{fileName} {
+      allow read: if isStaffOrAdmin() || myLecturerId() == lecturerId;
+
+      // Uploading also requires the target class to actually be this
+      // lecturer's own scheduled class (cross-checked against Firestore),
+      // not just a folder-name match.
+      allow write: if myLecturerId() == lecturerId
+        && firestore.get(/databases/(default)/documents/classSchedules/$(scheduleId)).data.lecturerId == lecturerId
+        && isValidMaterial();
+
+      allow delete: if isAdmin() || myLecturerId() == lecturerId;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

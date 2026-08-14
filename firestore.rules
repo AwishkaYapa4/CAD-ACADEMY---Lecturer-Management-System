@@ -1,0 +1,287 @@
+rules_version = '2';
+
+// Deny-by-default: every collection below is an explicit allow-list, and the
+// catch-all at the bottom denies anything not matched above it.
+//
+// This whole ruleset assumes NO Cloud Functions (client-only, free Spark
+// plan, by explicit user choice — see project memory). Every write is a
+// direct client write gated by role/ownership checks below; there is no
+// server-side enforcement layer or Admin SDK behind any of this.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function myRole() {
+      return isSignedIn() && userDoc().data.active == true ? userDoc().data.role : null;
+    }
+
+    // The lecturers/{lecturerId} doc id this caller is linked to, or null for
+    // admin/staff. Ownership checks throughout compare against this, not uid,
+    // because every collection stores `lecturerId` (the lecturers doc id),
+    // never the Auth uid directly.
+    function myLecturerId() {
+      return isSignedIn() ? userDoc().data.get('lecturerId', null) : null;
+    }
+
+    function isAdmin() {
+      return myRole() == 'admin';
+    }
+
+    function isStaff() {
+      return myRole() == 'staff';
+    }
+
+    function isLecturer() {
+      return myRole() == 'lecturer';
+    }
+
+    function isStaffOrAdmin() {
+      return isAdmin() || isStaff();
+    }
+
+    function ownsLecturerId(lecturerId) {
+      return isLecturer() && myLecturerId() == lecturerId;
+    }
+
+    // True when the incoming write only touches keys inside `allowedKeys`.
+    function onlyAffects(allowedKeys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedKeys);
+    }
+
+    // ---------------------------------------------------------------------
+    // users — role-based access source of truth. Doc id === Firebase Auth uid.
+    //
+    // Admin creates/updates accounts directly from the client (no Cloud
+    // Functions). The Auth account itself is created via a throwaway
+    // secondary app instance (see provisionAccount.js) so the admin's own
+    // session is never disturbed. Deactivating a lecturer flips `active`
+    // here (enforced by every other collection's rules checking it) but
+    // cannot forcibly invalidate an already-issued Auth token.
+    // ---------------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if isStaffOrAdmin() || request.auth.uid == userId;
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (request.auth.uid == userId
+            && onlyAffects(['phone', 'avatarUrl', 'lastLoginAt', 'updatedAt']));
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------------
+    // lecturers — profile data. Doc id is a generated lecturerId, linked back
+    // via users/{uid}.lecturerId. Admin manages this collection directly.
+    // ---------------------------------------------------------------------
+    match /lecturers/{lecturerId} {
+      allow read: if isStaffOrAdmin() || ownsLecturerId(lecturerId);
+      allow write: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------------
+    // courses — reference data. Admin manages these directly from the client.
+    // ---------------------------------------------------------------------
+    match /courses/{courseId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------------
+    // batches — reference data with lecturer/course assignment + progress.
+    // A batch names exactly which lecturer teaches it, so a lecturer only
+    // gets their own — never the full roster. Admin/Staff see everything.
+    // `completedClassCount` is treated as a display cache, not a source of
+    // truth — the UI derives real progress from classSchedules — so it's
+    // Admin-only like the rest of the doc; nothing else needs to write it.
+    // ---------------------------------------------------------------------
+    match /batches/{batchId} {
+      allow read: if isStaffOrAdmin() || ownsLecturerId(resource.data.lecturerId);
+      allow write: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------------
+    // lecturerAssignments — which lecturer teaches which course/batch.
+    // ---------------------------------------------------------------------
+    match /lecturerAssignments/{assignmentId} {
+      allow read: if isStaffOrAdmin() || ownsLecturerId(resource.data.lecturerId);
+      allow write: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------------
+    // classSchedules — normally created by Admin, but a lecturer may also
+    // schedule their own class directly, restricted to a batch already
+    // assigned to them (`lecturerId` on the batch, checked via get() below)
+    // and always starting life as a plain `scheduled` doc with no report
+    // linked yet. A lecturer may flip their own schedule scheduled ->
+    // draft_report (saving a draft report) or all the way to completed
+    // (submitting), but never back, never to/from `cancelled`, and never
+    // any other field — a schedule must not complete itself just because
+    // its date passed, and a lecturer must never be able to touch another
+    // lecturer's schedule.
+    // ---------------------------------------------------------------------
+    match /classSchedules/{scheduleId} {
+      allow read: if isStaffOrAdmin() || ownsLecturerId(resource.data.lecturerId);
+      allow create: if isAdmin()
+        || (isLecturer()
+            && request.resource.data.lecturerId == myLecturerId()
+            && request.resource.data.status == 'scheduled'
+            && request.resource.data.reportId == null
+            && get(/databases/$(database)/documents/batches/$(request.resource.data.batchId)).data.lecturerId == myLecturerId());
+      allow update: if isAdmin()
+        || (isLecturer()
+            && resource.data.lecturerId == myLecturerId()
+            && resource.data.status in ['scheduled', 'draft_report']
+            && request.resource.data.status in ['draft_report', 'completed']
+            && onlyAffects(['status', 'reportId', 'completedAt', 'updatedAt']));
+      // A lecturer may delete their own schedule regardless of status — the
+      // client cascades this into deleting the linked classReports and
+      // classMaterials docs (and their Storage files) in the same batch, so
+      // nothing is left dangling. See deleteScheduleCascade() in
+      // scheduleService.js. classReports' own delete rule below is the real
+      // backstop that keeps a *paid* report (and by extension its class)
+      // permanently undeletable, even by Admin.
+      allow delete: if isAdmin()
+        || (isLecturer() && resource.data.lecturerId == myLecturerId());
+    }
+
+    // ---------------------------------------------------------------------
+    // classReports — doc id === scheduleId (one report per scheduled class),
+    // which is what makes "cannot submit the same schedule twice" a create
+    // vs. update distinction instead of a query. Lecturer owns their own
+    // report while it's a draft; once submitted its *content* is permanently
+    // read-only to everyone, including the lecturer who wrote it and Admin
+    // (see the update rule below). Staff/Admin are otherwise read-only here:
+    // there is no verification/approval step in this system — a submitted
+    // report completes the class automatically.
+    //
+    // Deletion is different from update: the owning lecturer may delete
+    // their own report (draft or submitted) as long as it hasn't been paid
+    // yet — this is what backs deleting a class from classSchedules (see
+    // that collection's delete rule). Once paymentProcessed flips true, the
+    // report becomes permanently undeletable by anyone, Admin included, so
+    // payment history can never be quietly erased.
+    // ---------------------------------------------------------------------
+    match /classReports/{scheduleId} {
+      allow read: if isStaffOrAdmin() || ownsLecturerId(resource.data.lecturerId);
+
+      allow create: if isLecturer()
+        && request.resource.data.lecturerId == myLecturerId()
+        && request.resource.data.status in ['draft', 'submitted']
+        && request.resource.data.paymentProcessed == false;
+
+      allow update: if (isLecturer()
+        && resource.data.lecturerId == myLecturerId()
+        && resource.data.status == 'draft'
+        && onlyAffects([
+             'topicCovered', 'description', 'activitiesCompleted', 'homework', 'remarks',
+             'actualStartTime', 'actualEndTime', 'status',
+             'submittedAt', 'materialCount', 'updatedAt'
+           ])
+        && request.resource.data.status in ['draft', 'submitted']
+        && request.resource.data.paymentProcessed == false)
+        // Admin links a submitted report to a payment cycle when marking a
+        // lecturer paid — this is the only field-set Admin may ever touch on
+        // a report, so payment bookkeeping can never silently rewrite content.
+        || (isAdmin() && onlyAffects(['paymentProcessed', 'paymentId', 'updatedAt']));
+
+      allow delete: if isAdmin()
+        || (isLecturer()
+            && resource.data.lecturerId == myLecturerId()
+            && resource.data.paymentProcessed == false);
+    }
+
+    // ---------------------------------------------------------------------
+    // classMaterials — file metadata alongside a report; bytes live in
+    // Storage. A lecturer may only attach materials to their own report.
+    // Removing one is allowed any time up to the point its report is paid —
+    // not just while the report is a draft — so that deleting a whole class
+    // (see classSchedules' delete rule) can cascade into removing its
+    // materials even after the report was submitted.
+    // ---------------------------------------------------------------------
+    match /classMaterials/{materialId} {
+      allow read: if isStaffOrAdmin() || ownsLecturerId(resource.data.lecturerId);
+      allow create: if isLecturer() && request.resource.data.lecturerId == myLecturerId();
+      allow update: if false;
+      allow delete: if isAdmin()
+        || (isLecturer()
+            && resource.data.lecturerId == myLecturerId()
+            && get(/databases/$(database)/documents/classReports/$(resource.data.scheduleId)).data.paymentProcessed == false);
+    }
+
+    // ---------------------------------------------------------------------
+    // paymentRules — per-lecturer/course/batch scope, assigning a fixed
+    // monthly payment amount. Write stays Admin-only. Read (including the
+    // private amount subcollection) is Admin/Staff in full, plus a lecturer
+    // may read their own rule docs — Admin, Staff, and the owning Lecturer
+    // all see the same calculated payment amount (2026-08-10 spec: amount
+    // visibility is no longer restricted to Admin, only the *write* stays
+    // Admin-only). The private doc's own lecturerId isn't on the doc itself,
+    // so ownership is checked via the parent rule doc.
+    // ---------------------------------------------------------------------
+    match /paymentRules/{ruleId} {
+      allow read: if isStaffOrAdmin() || ownsLecturerId(resource.data.lecturerId);
+      allow write: if isAdmin();
+
+      match /private/{docId} {
+        allow read: if isStaffOrAdmin()
+          || ownsLecturerId(get(/databases/$(database)/documents/paymentRules/$(ruleId)).data.lecturerId);
+        allow write: if isAdmin();
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // payments — payment cycle documents. Admin manages these directly from
+    // the client (there's no server-side job computing readiness). Read
+    // (including the private amount subcollection) is Admin/Staff in full,
+    // plus the owning Lecturer — same as paymentRules above, Admin/Staff/
+    // Lecturer all see the same calculated amount; only the write (approve/
+    // pay/adjust) stays Admin-only.
+    // ---------------------------------------------------------------------
+    match /payments/{paymentId} {
+      allow read: if isStaffOrAdmin() || ownsLecturerId(resource.data.lecturerId);
+      allow write: if isAdmin();
+
+      match /private/{docId} {
+        allow read: if isStaffOrAdmin()
+          || ownsLecturerId(get(/databases/$(database)/documents/payments/$(paymentId)).data.lecturerId);
+        allow write: if isAdmin();
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // notifications — created directly by whichever client action triggers
+    // them (e.g. a lecturer submitting a report notifies staff/admin). Every
+    // signed-in role may create one; only the recipient can mark their own
+    // read, and only Admin can delete.
+    // ---------------------------------------------------------------------
+    match /notifications/{notificationId} {
+      allow read: if isAdmin() || resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn();
+      allow update: if resource.data.userId == request.auth.uid
+        && onlyAffects(['read']);
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------------
+    // systemSettings — Admin-only configuration.
+    // ---------------------------------------------------------------------
+    match /systemSettings/{settingId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------------
+    // Default deny for anything not explicitly matched above.
+    // ---------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

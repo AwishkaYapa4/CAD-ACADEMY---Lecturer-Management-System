@@ -39,26 +39,12 @@ export function LecturerPaymentSummaryRow({ lecturerName, scopeLabel, completed,
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
         <div>
           <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
             Completed Classes
           </p>
           <p className="mt-1 text-3xl font-bold tabular-nums text-foreground">{completed}</p>
-        </div>
-        <div>
-          <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-            {paid ? 'Received Payment' : 'Current Payment'}
-          </p>
-          <p className={cn('mt-1 text-3xl font-bold tabular-nums', paid ? 'text-success' : 'text-accent')}>
-            {hasAmount ? formatCurrency(finalPayment, currency) : '-'}
-          </p>
-          {paid ? (
-            <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-success">
-              <CheckCircle2 className="size-3.5" />
-              Payment closed for this month
-            </p>
-          ) : null}
         </div>
         <div>
           <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
@@ -71,6 +57,20 @@ export function LecturerPaymentSummaryRow({ lecturerName, scopeLabel, completed,
             value={progressValue}
             className={cn('mt-1.5 h-1.5', paid && '[&_[data-slot=progress-indicator]]:bg-success')}
           />
+        </div>
+        <div>
+          <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+            {paid ? 'Received Payment' : 'Current Payment'}
+          </p>
+          <p className={cn('mt-1 text-3xl font-bold tabular-nums', paid ? 'text-success' : 'text-warning')}>
+            {hasAmount ? formatCurrency(finalPayment, currency) : '-'}
+          </p>
+          {paid ? (
+            <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-success">
+              <CheckCircle2 className="size-3.5" />
+              Payment closed for this month
+            </p>
+          ) : null}
         </div>
         <div>
           <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">

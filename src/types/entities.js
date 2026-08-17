@@ -162,6 +162,7 @@
  * @property {string} lecturerId
  * @property {string} courseId
  * @property {string} [batchId] - narrows the rule to one batch within courseId; omitted means course-wide
+ * @property {string} periodMonth - 'yyyy-MM'; the month this course/batch rule applies to
  * @property {number} monthlyClassCount - manually configured number of classes the monthlyAmount is meant to cover; the divisor in paymentPerClass = monthlyAmount / monthlyClassCount (see calculateMonthlyPayment() in features/payments/utils/monthlyCalc.js), never derived from the calendar's scheduled-class count
  * @property {boolean} active
  * @property {string} [notes]

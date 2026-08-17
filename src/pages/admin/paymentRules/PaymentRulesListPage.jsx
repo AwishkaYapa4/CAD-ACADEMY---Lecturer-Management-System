@@ -22,6 +22,7 @@ import {
   usePaymentRules,
   useSetPaymentRuleActive,
 } from '@/features/paymentRules/hooks/usePaymentRules'
+import { monthKeyLabel } from '@/features/payments/utils/monthlyCalc'
 
 /** Amount lives in an Admin-only private subcollection — fetched per row rather than bulk-loaded. */
 function MonthlyAmountCell({ ruleId }) {
@@ -63,6 +64,11 @@ export default function PaymentRulesListPage() {
       key: 'batch',
       header: 'Batch',
       render: (row) => (row.batchId ? batchById[row.batchId]?.batchCode ?? '—' : 'All batches'),
+    },
+    {
+      key: 'periodMonth',
+      header: 'Month',
+      render: (row) => (row.periodMonth ? monthKeyLabel(row.periodMonth) : 'All months'),
     },
     {
       key: 'amount',

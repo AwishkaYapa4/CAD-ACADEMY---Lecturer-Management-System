@@ -83,7 +83,7 @@ export function LecturerPaymentHighlights({
 
   const renderRow = (row) => (
     <LecturerPaymentSummaryRow
-      key={row.rule.id}
+      key={row.rowKey ?? row.rule.id}
       lecturerName={showLecturerNames ? (lecturerById[row.rule.lecturerId]?.fullName ?? 'Unknown lecturer') : null}
       scopeLabel={[courseById[row.rule.courseId]?.name, batchById[row.rule.batchId]?.batchCode]
         .filter(Boolean)

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 
 import { PAYMENT_CYCLE_STATUS } from '@/constants/statuses'
+import { useClassReports, useLecturerReports } from '@/features/classReports/hooks/useClassReports'
 import { useLecturerPaymentRules, usePaymentRules } from '@/features/paymentRules/hooks/usePaymentRules'
 import { matchPaymentRuleForScope } from '@/features/paymentRules/utils/matchRule'
 import { useLecturerPayments, usePayments } from '@/features/payments/hooks/usePayments'
@@ -40,26 +41,44 @@ export function usePaymentReadinessSummary(lecturerId, monthKey = monthKeyFor())
   const ownSchedules = useLecturerSchedules(lecturerId)
   const allPayments = usePayments()
   const ownPayments = useLecturerPayments(lecturerId)
+  const allReports = useClassReports()
+  const ownReports = useLecturerReports(lecturerId)
 
   const { data: rules, loading: rulesLoading } = lecturerId ? ownRules : allRules
   const { data: schedules, loading: schedulesLoading } = lecturerId ? ownSchedules : allSchedules
   const { data: payments, loading: paymentsLoading } = lecturerId ? ownPayments : allPayments
+  const { data: reports, loading: reportsLoading } = lecturerId ? ownReports : allReports
 
   const activeRules = useMemo(
-    () => rules.filter((r) => r.active !== false && (!lecturerId || r.lecturerId === lecturerId)),
-    [rules, lecturerId]
+    () =>
+      rules.filter(
+        (r) =>
+          r.active !== false &&
+          (!lecturerId || r.lecturerId === lecturerId) &&
+          (!r.periodMonth || r.periodMonth === monthKey)
+      ),
+    [rules, lecturerId, monthKey]
   )
 
-  // Which (paymentRuleId, month) combos are already spoken for — an approved
-  // or paid payment locks that rule's month from being paid out a second
-  // time (see approvePayment's periodMonth uniqueness).
-  const paidRuleMonths = useMemo(() => {
-    const set = new Set()
+  // Paid payments stay visible as received history, but they no longer lock
+  // the whole month; only the reports marked paymentProcessed are excluded
+  // from the next payable row.
+  const paidPaymentByRuleMonth = useMemo(() => {
+    const byKey = {}
     payments
       .filter((p) => [PAYMENT_CYCLE_STATUS.APPROVED, PAYMENT_CYCLE_STATUS.PAID].includes(p.status))
-      .forEach((p) => set.add(`${p.paymentRuleId}__${p.periodMonth}`))
-    return set
+      .forEach((payment) => {
+        const key = `${payment.paymentRuleId}__${payment.periodMonth}`
+        byKey[key] = byKey[key] ?? { ...payment, id: key, completedClassCount: 0 }
+        byKey[key].completedClassCount += payment.completedClassCount ?? 0
+      })
+    return byKey
   }, [payments])
+
+  const reportByScheduleId = useMemo(
+    () => Object.fromEntries(reports.map((report) => [report.scheduleId ?? report.id, report])),
+    [reports]
+  )
 
   const rows = useMemo(() => {
     const inMonth = schedules.filter((s) => {
@@ -77,26 +96,62 @@ export function usePaymentReadinessSummary(lecturerId, monthKey = monthKeyFor())
         lecturerId: schedule.lecturerId,
         courseId: schedule.courseId,
         batchId: schedule.batchId,
+        periodMonth: monthKey,
       })
       if (!rule) return
       byRuleId[rule.id] = byRuleId[rule.id] ?? []
       byRuleId[rule.id].push(schedule)
     })
 
-    return activeRules.map((rule) => {
-      const { totalScheduled, completed, completedSchedules } = summarizeMonth(byRuleId[rule.id] ?? [])
-      const alreadyPaid = paidRuleMonths.has(`${rule.id}__${monthKey}`)
+    return activeRules.flatMap((rule) => {
+      const { totalScheduled, completedSchedules: allCompletedSchedules } = summarizeMonth(byRuleId[rule.id] ?? [])
+      const completedSchedules = allCompletedSchedules.filter(
+        (schedule) => reportByScheduleId[schedule.id]?.paymentProcessed !== true
+      )
+      const payableCompleted = completedSchedules.length
+      const paidKey = `${rule.id}__${monthKey}`
+      const paidPayment = paidPaymentByRuleMonth[paidKey]
+      const rowsForRule = []
       // Readiness is driven by completed classes against the rule's
       // configured monthlyClassCount, not by how many classes were actually
       // scheduled that month (totalScheduled is informational display only —
       // see calculateMonthlyPayment in monthlyCalc.js).
-      const isReady = completed > 0 && !alreadyPaid
-      return { rule, monthKey, totalScheduled, completed, completedSchedules, alreadyPaid, isReady }
+      if (!paidPayment || payableCompleted > 0) {
+        rowsForRule.push({
+          rowKey: `${rule.id}__pending__${monthKey}`,
+          kind: 'pending',
+          rule,
+          monthKey,
+          totalScheduled,
+          completed: payableCompleted,
+          payableCompleted,
+          completedSchedules,
+          alreadyPaid: false,
+          isReady: payableCompleted > 0,
+        })
+      }
+
+      if (paidPayment) {
+        rowsForRule.push({
+          rowKey: `${rule.id}__paid__${paidPayment.id ?? monthKey}`,
+          kind: 'paid',
+          rule,
+          monthKey,
+          totalScheduled,
+          completed: paidPayment.completedClassCount ?? 0,
+          payableCompleted: 0,
+          completedSchedules: [],
+          alreadyPaid: true,
+          isReady: false,
+        })
+      }
+
+      return rowsForRule
     })
-  }, [schedules, activeRules, monthKey, paidRuleMonths])
+  }, [schedules, activeRules, monthKey, paidPaymentByRuleMonth, reportByScheduleId])
 
   return {
-    loading: rulesLoading || schedulesLoading || paymentsLoading,
+    loading: rulesLoading || schedulesLoading || paymentsLoading || reportsLoading,
     monthKey,
     rows,
     readyCount: rows.filter((r) => r.isReady).length,

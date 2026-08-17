@@ -46,7 +46,7 @@ export function PendingPaymentsCard({ rows, loading, viewAllHref, maxRows = 5 })
         ) : (
           visible.map((row) => (
             <DashboardPaymentRow
-              key={row.rule.id}
+              key={row.rowKey ?? row.rule.id}
               lecturerName={row.lecturerName}
               scopeLabel={row.scopeLabel}
               completed={row.completed}

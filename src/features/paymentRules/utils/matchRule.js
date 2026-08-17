@@ -6,21 +6,22 @@
  * excluded entirely (not a partial match) — it belongs to a different
  * course/batch and must never claim these reports.
  */
-function scopeScore(rule, { lecturerId, courseId, batchId }) {
+function scopeScore(rule, { lecturerId, courseId, batchId, periodMonth }) {
   if (rule.lecturerId !== lecturerId) return null
+  if (rule.periodMonth && rule.periodMonth !== periodMonth) return null
 
   if (rule.batchId) {
     if (rule.batchId !== batchId) return null
     if (rule.courseId && rule.courseId !== courseId) return null
-    return 3
+    return 3 + (rule.periodMonth ? 10 : 0)
   }
 
   if (rule.courseId) {
     if (rule.courseId !== courseId) return null
-    return 2
+    return 2 + (rule.periodMonth ? 10 : 0)
   }
 
-  return 1
+  return 1 + (rule.periodMonth ? 10 : 0)
 }
 
 /**

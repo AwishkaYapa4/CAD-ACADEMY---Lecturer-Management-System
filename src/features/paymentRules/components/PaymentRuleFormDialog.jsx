@@ -40,6 +40,7 @@ import {
   usePaymentRuleAmount,
   useUpdatePaymentRule,
 } from '@/features/paymentRules/hooks/usePaymentRules'
+import { monthKeyFor } from '@/features/payments/utils/monthlyCalc'
 
 const NO_BATCH = 'none'
 
@@ -47,6 +48,7 @@ const ruleSchema = z.object({
   lecturerId: z.string().min(1, 'Lecturer is required'),
   courseId: z.string().min(1, 'Course is required'),
   batchId: z.string().optional(),
+  periodMonth: z.string().regex(/^\d{4}-\d{2}$/, 'Payment month is required'),
   monthlyClassCount: z.coerce
     .number({ invalid_type_error: 'Monthly class count is required' })
     .int('Monthly class count must be a whole number')
@@ -77,6 +79,7 @@ export function PaymentRuleFormDialog({ open, onOpenChange, rule }) {
       lecturerId: rule?.lecturerId ?? '',
       courseId: rule?.courseId ?? '',
       batchId: rule?.batchId ?? NO_BATCH,
+      periodMonth: rule?.periodMonth ?? monthKeyFor(),
       monthlyClassCount: rule?.monthlyClassCount ?? undefined,
       monthlyAmount: existingAmount?.monthlyAmount ?? undefined,
       currency: existingAmount?.currency ?? settings?.defaultCurrency ?? 'LKR',
@@ -216,6 +219,20 @@ export function PaymentRuleFormDialog({ open, onOpenChange, rule }) {
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="periodMonth"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Payment Month</FormLabel>
+                  <FormControl>
+                    <Input type="month" {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

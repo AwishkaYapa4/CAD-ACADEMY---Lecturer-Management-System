@@ -52,18 +52,19 @@ export default function BatchDetailPage() {
     return { total: schedules.length, completed, pending, cancelled, materials }
   }, [schedules, reports])
 
+  const currentMonthKey = monthKeyFor()
+
   const matchedRule = useMemo(() => {
     if (!batch) return null
     return matchPaymentRuleForScope(
-      rules.filter((r) => r.active !== false),
-      { lecturerId: batch.lecturerId, courseId: batch.courseId, batchId: batch.id }
+      rules.filter((r) => r.active !== false && (!r.periodMonth || r.periodMonth === currentMonthKey)),
+      { lecturerId: batch.lecturerId, courseId: batch.courseId, batchId: batch.id, periodMonth: currentMonthKey }
     )
-  }, [rules, batch])
+  }, [rules, batch, currentMonthKey])
 
   // `schedules` here is already batch-scoped (useBatchSchedules), which is
   // strictly narrower than the matched rule's own scope, so no extra
   // rule-matching is needed — just narrow to the current calendar month.
-  const currentMonthKey = monthKeyFor()
   const monthSummary = useMemo(() => {
     const inMonth = schedules.filter((s) => {
       const date = toDate(s.classDate)

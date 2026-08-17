@@ -38,17 +38,18 @@ export function lecturerRuleConstraints(lecturerId) {
  * within that same course are allowed to coexist, since matchRule.js treats
  * the batch-scoped one as more specific and prefers it for that batch's reports.
  */
-async function assertNoDuplicateActiveRule({ lecturerId, courseId, batchId, excludeRuleId }) {
+async function assertNoDuplicateActiveRule({ lecturerId, courseId, batchId, periodMonth, excludeRuleId }) {
   const existing = await paymentRulesCollection.getAll([where('lecturerId', '==', lecturerId)])
   const clash = existing.find(
     (r) =>
       r.id !== excludeRuleId &&
       r.active !== false &&
       r.courseId === courseId &&
-      (r.batchId || null) === (batchId || null)
+      (r.batchId || null) === (batchId || null) &&
+      (r.periodMonth || null) === (periodMonth || null)
   )
   if (clash) {
-    throw new Error('This lecturer already has an active payment rule for this course/batch.')
+    throw new Error('This lecturer already has an active payment rule for this course/batch/month.')
   }
 }
 
@@ -65,17 +66,19 @@ export async function createPaymentRule({
   lecturerId,
   courseId,
   batchId,
+  periodMonth,
   monthlyClassCount,
   monthlyAmount,
   currency,
   notes,
 }) {
-  await assertNoDuplicateActiveRule({ lecturerId, courseId, batchId })
+  await assertNoDuplicateActiveRule({ lecturerId, courseId, batchId, periodMonth })
 
   const ruleId = await paymentRulesCollection.create({
     lecturerId,
     courseId,
     batchId: batchId || null,
+    periodMonth,
     monthlyClassCount: Number(monthlyClassCount) || 0,
     active: true,
     notes: notes || '',
@@ -92,13 +95,14 @@ export async function createPaymentRule({
 
 export async function updatePaymentRule(
   ruleId,
-  { lecturerId, courseId, batchId, monthlyClassCount, monthlyAmount, currency, notes }
+  { lecturerId, courseId, batchId, periodMonth, monthlyClassCount, monthlyAmount, currency, notes }
 ) {
-  await assertNoDuplicateActiveRule({ lecturerId, courseId, batchId, excludeRuleId: ruleId })
+  await assertNoDuplicateActiveRule({ lecturerId, courseId, batchId, periodMonth, excludeRuleId: ruleId })
 
   await paymentRulesCollection.update(ruleId, {
     courseId,
     batchId: batchId || null,
+    periodMonth,
     monthlyClassCount: Number(monthlyClassCount) || 0,
     notes: notes || '',
   })

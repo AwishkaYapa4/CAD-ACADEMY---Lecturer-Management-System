@@ -46,9 +46,9 @@ export function PaymentReadinessList({ showAmount, canApprove, monthKey, filters
 
   return (
     <div className="space-y-4">
-      {visibleRows.map(({ rule, monthKey: rowMonth, totalScheduled, completed, completedSchedules, isReady }) => (
+      {visibleRows.filter((row) => row.kind !== 'paid').map(({ rowKey, rule, monthKey: rowMonth, totalScheduled, completed, completedSchedules, isReady }) => (
         <PaymentReadinessRow
-          key={rule.id}
+          key={rowKey ?? rule.id}
           rule={rule}
           lecturer={lecturerById[rule.lecturerId]}
           course={rule.courseId ? courseById[rule.courseId] : null}

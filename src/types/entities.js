@@ -132,15 +132,13 @@
  */
 
 /**
- * @typedef {Object} CourseMaterialDoc  // courseMaterials/{materialId} — Cloudinary-backed lecture materials, organized by course + week
+ * @typedef {Object} CourseMaterialDoc  // courseMaterials/{materialId} — R2-backed lecture materials, organized by course + week
  * @property {string} courseId
  * @property {number} week
  * @property {string} title
  * @property {string} [description]
  * @property {string} originalFilename
- * @property {string} cloudinaryPublicId - includes the file extension (Cloudinary raw assets have no automatic format handling)
- * @property {string} cloudinaryAssetId
- * @property {'raw'} resourceType
+ * @property {string} r2Key - object key in the R2 bucket, e.g. materials/{courseId}/week-{week}/{uuid}.pdf — see server/services/r2Service.js
  * @property {string} format - extension without the dot, e.g. 'pdf'
  * @property {string} mimeType
  * @property {number} sizeBytes
@@ -207,7 +205,11 @@
  * @property {number} [monthlyAmount] - the rule's monthlyAmount at the time this payment was calculated (audit copy)
  * @property {number} [monthlyClassCount] - the rule's monthlyClassCount at the time this payment was calculated (audit copy)
  * @property {number} rate - payment per class for this period (monthlyAmount ÷ monthlyClassCount)
- * @property {number} totalAmount - final payment (rate × completedClassCount, capped at monthlyAmount)
+ * @property {number} [regularClassCount] - completed classes covered by the configured monthlyClassCount
+ * @property {number} [regularAmount] - payment for regular monthly classes
+ * @property {number} [extraClassCount] - completed classes above monthlyClassCount
+ * @property {number} [extraAmount] - payment for extra classes above monthlyClassCount
+ * @property {number} totalAmount - final payment (regularAmount + extraAmount)
  * @property {string} currency
  * @property {import('firebase/firestore').Timestamp} calculatedAt
  */

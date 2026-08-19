@@ -136,6 +136,7 @@ export function usePaymentReadinessSummary(lecturerId, monthKey = monthKeyFor())
           rowKey: `${rule.id}__paid__${paidPayment.id ?? monthKey}`,
           kind: 'paid',
           rule,
+          payment: paidPayment,
           monthKey,
           totalScheduled,
           completed: paidPayment.completedClassCount ?? 0,

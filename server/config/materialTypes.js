@@ -1,8 +1,9 @@
-// Allowed lecture-material file types for the Cloudinary upload endpoint —
-// deliberately narrower than the existing class-report attachments
+// Allowed lecture-material file types for the R2 upload flow (materials.
+// controller.js validates against this before issuing a presigned upload
+// URL) — deliberately narrower than the existing class-report attachments
 // (src/constants/storage.js's ACCEPTED_MATERIAL_TYPES, which also allows
 // zip/jpeg/png for a different feature). Mirrored on the frontend in
-// src/constants/cloudinaryMaterials.js for instant client-side validation —
+// src/constants/lectureMaterials.js for instant client-side validation —
 // keep both lists in sync; this one is what's actually enforced.
 export const ALLOWED_MATERIAL_MIME_TYPES = Object.freeze({
   'application/pdf': '.pdf',

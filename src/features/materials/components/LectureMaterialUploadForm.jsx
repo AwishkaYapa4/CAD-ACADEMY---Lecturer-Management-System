@@ -14,7 +14,7 @@ import {
   ALLOWED_MATERIAL_EXTENSIONS,
   ALLOWED_MATERIAL_MIME_TYPES,
   MAX_MATERIAL_FILE_SIZE_MB,
-} from '@/constants/cloudinaryMaterials'
+} from '@/constants/lectureMaterials'
 import { useUploadLectureMaterial } from '@/features/materials/hooks/useLectureMaterials'
 
 // Title/Week/Description used to be user-entered fields; the form now only
@@ -48,7 +48,7 @@ function validateFile(file) {
 }
 
 /**
- * Upload form for the Cloudinary-backed lecture material library.
+ * Upload form for the R2-backed lecture material library.
  *
  * - `courses` — dropdown source when the caller isn't already in a single-
  *   course context (e.g. Admin's general library page). Ignored when

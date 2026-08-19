@@ -9,17 +9,87 @@ import { cn } from '@/lib/utils'
  * Paid rows are rendered as closed, highlighted records; unpaid rows remain
  * the current payment view for the selected month.
  */
-export function LecturerPaymentSummaryRow({ lecturerName, scopeLabel, completed, target, amount, finalPayment, paid }) {
+export function LecturerPaymentSummaryRow({ lecturerName, scopeLabel, completed, target, amount, finalPayment, paid, action, compact = false }) {
   const percent = target > 0 ? Math.min(100, Math.round((completed / target) * 100)) : 0
   const progressValue = paid ? 100 : percent
   const currency = amount?.currency ?? ''
   const hasAmount = Boolean(amount)
+  const extraClassCount = target > 0 ? Math.max(0, completed - target) : 0
+  const extraPayment = hasAmount && amount.rate
+    ? amount.rate * extraClassCount
+    : Math.max(0, finalPayment - (amount?.monthlyAmount ?? 0))
+  const paymentLabel = paid && action ? 'Payment Paid' : paid ? 'Received Payment' : 'Total Payable'
+
+  if (compact) {
+    return (
+      <div
+        className={cn(
+          'rounded-lg border bg-card p-4',
+          paid ? 'border-success/35 bg-success/5' : 'border-warning/35 bg-warning/5'
+        )}
+      >
+        <div className="mb-3 flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            {lecturerName ? <p className="truncate text-sm font-semibold text-foreground">{lecturerName}</p> : null}
+            {scopeLabel ? <p className="truncate text-xs text-muted-foreground">{scopeLabel}</p> : null}
+          </div>
+          {paid ? (
+            action ?? (
+              <div className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-semibold text-success">
+                <CheckCircle2 className="size-3" />
+                Received
+              </div>
+            )
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div>
+            <p className="text-[10px] font-medium uppercase text-muted-foreground">Completed classes</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{completed}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium uppercase text-muted-foreground">Class progress</p>
+            <p className={cn('mt-1 text-xs font-semibold', paid ? 'text-success' : 'text-foreground')}>
+              {paid ? 'Complete' : `${completed} / ${target || '-'}`}
+            </p>
+            <Progress
+              value={progressValue}
+              className={cn('mt-1.5 h-1.5', paid && '[&_[data-slot=progress-indicator]]:bg-success')}
+            />
+          </div>
+          <div>
+            <p className="text-[10px] font-medium uppercase text-muted-foreground">{paymentLabel}</p>
+            <p className={cn('mt-1 text-2xl font-bold tabular-nums', paid ? 'text-success' : 'text-warning')}>
+              {hasAmount ? formatCurrency(finalPayment, currency) : '-'}
+            </p>
+            {paid && !action ? (
+              <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-success">
+                <CheckCircle2 className="size-3" />
+                Payment closed for this month
+              </p>
+            ) : extraClassCount > 0 ? (
+              <p className="mt-1 text-[11px] font-medium text-warning">
+                Extra: {formatCurrency(extraPayment, currency)}
+              </p>
+            ) : null}
+          </div>
+          <div>
+            <p className="text-[10px] font-medium uppercase text-muted-foreground">Monthly payment</p>
+            <p className="mt-1 text-sm font-bold text-foreground">
+              {hasAmount ? formatCurrency(amount.monthlyAmount, currency) : '-'}
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
       className={cn(
         'rounded-xl border bg-card p-5',
-        paid ? 'border-success/40 bg-success/5 ring-1 ring-success/20' : 'border-border'
+        paid ? 'border-success/40 bg-success/5 ring-1 ring-success/20' : 'border-warning/40 bg-warning/5 ring-1 ring-warning/15'
       )}
     >
       {lecturerName || scopeLabel || paid ? (
@@ -31,10 +101,12 @@ export function LecturerPaymentSummaryRow({ lecturerName, scopeLabel, completed,
             {scopeLabel ? <p className="truncate text-xs text-muted-foreground">{scopeLabel}</p> : null}
           </div>
           {paid ? (
-            <div className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
-              <CheckCircle2 className="size-3.5" />
-              Received
-            </div>
+            action ?? (
+              <div className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
+                <CheckCircle2 className="size-3.5" />
+                Received
+              </div>
+            )
           ) : null}
         </div>
       ) : null}
@@ -53,6 +125,9 @@ export function LecturerPaymentSummaryRow({ lecturerName, scopeLabel, completed,
           <p className={cn('mt-1 text-sm font-medium', paid ? 'text-success' : 'text-foreground')}>
             {paid ? 'Complete' : `${completed} / ${target || '-'}`}
           </p>
+          {extraClassCount > 0 ? (
+            <p className="mt-1 text-xs font-semibold text-warning">+{extraClassCount} extra</p>
+          ) : null}
           <Progress
             value={progressValue}
             className={cn('mt-1.5 h-1.5', paid && '[&_[data-slot=progress-indicator]]:bg-success')}
@@ -60,15 +135,19 @@ export function LecturerPaymentSummaryRow({ lecturerName, scopeLabel, completed,
         </div>
         <div>
           <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-            {paid ? 'Received Payment' : 'Current Payment'}
+            {paymentLabel}
           </p>
           <p className={cn('mt-1 text-3xl font-bold tabular-nums', paid ? 'text-success' : 'text-warning')}>
             {hasAmount ? formatCurrency(finalPayment, currency) : '-'}
           </p>
-          {paid ? (
+          {paid && !action ? (
             <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-success">
               <CheckCircle2 className="size-3.5" />
               Payment closed for this month
+            </p>
+          ) : extraClassCount > 0 ? (
+            <p className="mt-1 text-xs font-medium text-warning">
+              Extra class payment: {formatCurrency(extraPayment, currency)}
             </p>
           ) : null}
         </div>
@@ -79,6 +158,11 @@ export function LecturerPaymentSummaryRow({ lecturerName, scopeLabel, completed,
           <p className="mt-1 text-sm font-medium text-foreground">
             {hasAmount ? formatCurrency(amount.monthlyAmount, currency) : '-'}
           </p>
+          {extraClassCount > 0 ? (
+            <p className="mt-1 text-xs font-medium text-warning">
+              Extra: {formatCurrency(extraPayment, currency)}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

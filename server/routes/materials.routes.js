@@ -1,15 +1,24 @@
 import { Router } from 'express'
 
-import { getMaterialDownloadUrl, listCourseMaterials, listMyMaterials, removeMaterial, uploadMaterial } from '../controllers/materials.controller.js'
+import {
+  createMaterialUploadUrl,
+  getMaterialDownloadUrl,
+  listCourseMaterials,
+  listMyMaterials,
+  removeMaterial,
+  uploadMaterial,
+} from '../controllers/materials.controller.js'
 import { authenticate } from '../middleware/authenticate.js'
 import { requireRole } from '../middleware/authorize.js'
-import { uploadMaterialFile } from '../middleware/upload.js'
 
 const router = Router()
 
 // Only Admin/Lecturer may upload; per-course permission is checked in the
-// controller (assertCanManageCourseMaterials).
-router.post('/materials/upload', authenticate, requireRole('admin', 'lecturer'), uploadMaterialFile, uploadMaterial)
+// controller (assertCanManageCourseMaterials). Two-step: get a presigned R2
+// PUT URL, then (once the browser has PUT the file directly to R2) save the
+// metadata — see server/services/r2Service.js.
+router.post('/materials/upload-url', authenticate, requireRole('admin', 'lecturer'), createMaterialUploadUrl)
+router.post('/materials', authenticate, requireRole('admin', 'lecturer'), uploadMaterial)
 
 // Every signed-in role may list — per-course view permission (Admin/Staff
 // always, Lecturer only for courses they teach) is checked in the controller.

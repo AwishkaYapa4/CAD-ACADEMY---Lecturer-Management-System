@@ -78,7 +78,7 @@ export function ScheduleFormDialog({ open, onOpenChange, schedule, lecturerId, o
       classDate: toDateInputValue(schedule?.classDate),
       startTime: schedule?.startTime ?? '',
       endTime: schedule?.endTime ?? '',
-      locationType: schedule?.locationType ?? 'physical',
+      locationType: schedule?.locationType ?? 'online',
       location: schedule?.location ?? '',
       zoomLink: schedule?.zoomLink ?? '',
     },

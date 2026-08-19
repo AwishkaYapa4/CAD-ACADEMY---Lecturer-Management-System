@@ -5,7 +5,9 @@ import { Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { z } from 'zod'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -32,23 +34,24 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useBatches } from '@/features/batches/hooks/useBatches'
+import { deriveBatchStatus } from '@/features/batches/services/batchService'
 import { useCourses } from '@/features/courses/hooks/useCourses'
+import { BATCH_STATUS } from '@/constants/statuses'
 import { useGeneralSettings } from '@/features/settings/hooks/useSettings'
 import { useLecturers } from '@/features/lecturers/hooks/useLecturers'
 import {
-  useCreatePaymentRule,
+  useCreatePaymentRulesForScopes,
   usePaymentRuleAmount,
   useUpdatePaymentRule,
 } from '@/features/paymentRules/hooks/usePaymentRules'
-import { monthKeyFor } from '@/features/payments/utils/monthlyCalc'
 
 const NO_BATCH = 'none'
 
 const ruleSchema = z.object({
   lecturerId: z.string().min(1, 'Lecturer is required'),
-  courseId: z.string().min(1, 'Course is required'),
+  courseId: z.string().optional(),
   batchId: z.string().optional(),
-  periodMonth: z.string().regex(/^\d{4}-\d{2}$/, 'Payment month is required'),
+  batchIds: z.array(z.string()).optional(),
   monthlyClassCount: z.coerce
     .number({ invalid_type_error: 'Monthly class count is required' })
     .int('Monthly class count must be a whole number')
@@ -69,9 +72,9 @@ export function PaymentRuleFormDialog({ open, onOpenChange, rule }) {
   const { data: settings } = useGeneralSettings()
   // Existing amount (Admin-only private subcollection) — only fetched in edit mode.
   const { data: existingAmount, loading: amountLoading } = usePaymentRuleAmount(rule?.id, isEdit)
-  const createRule = useCreatePaymentRule()
+  const createRulesForScopes = useCreatePaymentRulesForScopes()
   const updateRule = useUpdatePaymentRule()
-  const submitting = createRule.isPending || updateRule.isPending
+  const submitting = createRulesForScopes.isPending || updateRule.isPending
 
   const form = useForm({
     resolver: zodResolver(ruleSchema),
@@ -79,7 +82,7 @@ export function PaymentRuleFormDialog({ open, onOpenChange, rule }) {
       lecturerId: rule?.lecturerId ?? '',
       courseId: rule?.courseId ?? '',
       batchId: rule?.batchId ?? NO_BATCH,
-      periodMonth: rule?.periodMonth ?? monthKeyFor(),
+      batchIds: rule?.batchId ? [rule.batchId] : [],
       monthlyClassCount: rule?.monthlyClassCount ?? undefined,
       monthlyAmount: existingAmount?.monthlyAmount ?? undefined,
       currency: existingAmount?.currency ?? settings?.defaultCurrency ?? 'LKR',
@@ -103,17 +106,46 @@ export function PaymentRuleFormDialog({ open, onOpenChange, rule }) {
   const courseId = form.watch('courseId')
   // A rule scoped to a batch only makes sense for a batch that's both this
   // lecturer's and this course's — matches how matchRule.js prioritizes it.
-  const batchesForScope = batches.filter((b) => b.lecturerId === lecturerId && b.courseId === courseId)
+  const selectedBatchIds = form.watch('batchIds') ?? []
+  // A completed batch (all planned classes done) no longer needs a payment
+  // rule going forward, so it's excluded from selection — except the batch
+  // this rule is already scoped to, which must stay selectable so the field
+  // keeps showing the rule's current scope while editing.
+  const isSelectable = (batch) => deriveBatchStatus(batch) !== BATCH_STATUS.COMPLETED || batch.id === rule?.batchId
+  const batchesForScope = batches.filter(
+    (b) => b.lecturerId === lecturerId && b.courseId === courseId && isSelectable(b)
+  )
+  const assignedBatches = batches.filter((b) => b.lecturerId === lecturerId && isSelectable(b))
+  const selectedBatches = assignedBatches.filter((batch) => selectedBatchIds.includes(batch.id))
+  const batchesByCourse = assignedBatches.reduce((groups, batch) => {
+    const key = batch.courseId || 'unknown'
+    return { ...groups, [key]: [...(groups[key] ?? []), batch] }
+  }, {})
+
+  const toggleBatch = (batchId, checked) => {
+    const next = checked
+      ? Array.from(new Set([...selectedBatchIds, batchId]))
+      : selectedBatchIds.filter((id) => id !== batchId)
+    form.setValue('batchIds', next, { shouldDirty: true, shouldValidate: true })
+  }
 
   const onSubmit = async (values) => {
     try {
-      const data = { ...values, batchId: values.batchId === NO_BATCH ? null : values.batchId }
       if (isEdit) {
+        const data = { ...values, batchId: values.batchId === NO_BATCH ? null : values.batchId }
         await updateRule.mutateAsync({ ruleId: rule.id, data })
         toast.success('Payment rule updated')
       } else {
-        await createRule.mutateAsync(data)
-        toast.success('Payment rule created')
+        const scopes = selectedBatches.map((batch) => ({
+          courseId: batch.courseId,
+          batchId: batch.id,
+        }))
+        if (scopes.length === 0) {
+          form.setError('batchIds', { message: 'Select at least one assigned batch' })
+          return
+        }
+        await createRulesForScopes.mutateAsync({ ...values, scopes })
+        toast.success(scopes.length === 1 ? 'Payment rule created' : `${scopes.length} payment rules created`)
       }
       onOpenChange(false)
     } catch (error) {
@@ -127,9 +159,8 @@ export function PaymentRuleFormDialog({ open, onOpenChange, rule }) {
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit payment rule' : 'Add payment rule'}</DialogTitle>
           <DialogDescription>
-            Assign a lecturer a fixed monthly payment for a defined number of classes per month.
-            Each month, the payment is prorated by how many of those classes they actually
-            completed.
+            Assign a lecturer a fixed monthly payment for selected batches. The rule stays active
+            for each batch until that batch ends.
           </DialogDescription>
         </DialogHeader>
 
@@ -146,6 +177,7 @@ export function PaymentRuleFormDialog({ open, onOpenChange, rule }) {
                     onValueChange={(value) => {
                       field.onChange(value)
                       form.setValue('batchId', NO_BATCH)
+                      form.setValue('batchIds', [])
                     }}
                     disabled={isEdit}
                   >
@@ -167,76 +199,114 @@ export function PaymentRuleFormDialog({ open, onOpenChange, rule }) {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="courseId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Course</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={(value) => {
-                      field.onChange(value)
-                      form.setValue('batchId', NO_BATCH)
-                    }}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select course" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {courses.map((course) => (
-                        <SelectItem key={course.id} value={course.id}>
-                          {course.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {isEdit ? (
+              <>
+                <FormField
+                  control={form.control}
+                  name="courseId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Course</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => {
+                          field.onChange(value)
+                          form.setValue('batchId', NO_BATCH)
+                        }}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select course" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {courses.map((course) => (
+                            <SelectItem key={course.id} value={course.id}>
+                              {course.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="batchId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Batch</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange} disabled={!lecturerId || !courseId}>
-                    <FormControl>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select lecturer and course first" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value={NO_BATCH}>All batches (course-wide)</SelectItem>
-                      {batchesForScope.map((batch) => (
-                        <SelectItem key={batch.id} value={batch.id}>
-                          {batch.batchCode}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="periodMonth"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Payment Month</FormLabel>
-                  <FormControl>
-                    <Input type="month" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="batchId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Batch</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange} disabled={!lecturerId || !courseId}>
+                        <FormControl>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select lecturer and course first" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value={NO_BATCH}>All batches (course-wide)</SelectItem>
+                          {batchesForScope.map((batch) => (
+                            <SelectItem key={batch.id} value={batch.id}>
+                              {batch.batchCode}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            ) : (
+              <FormField
+                control={form.control}
+                name="batchIds"
+                render={() => (
+                  <FormItem>
+                    <div className="flex items-center justify-between gap-3">
+                      <FormLabel>Assigned batches</FormLabel>
+                      <Badge variant="outline">{selectedBatchIds.length} selected</Badge>
+                    </div>
+                    <div className="max-h-56 space-y-3 overflow-y-auto rounded-lg border border-border p-3">
+                      {!lecturerId ? (
+                        <p className="text-sm text-muted-foreground">Select a lecturer first.</p>
+                      ) : assignedBatches.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No batches assigned to this lecturer yet.</p>
+                      ) : (
+                        Object.entries(batchesByCourse).map(([groupCourseId, courseBatches]) => (
+                          <div key={groupCourseId} className="space-y-2">
+                            <p className="text-xs font-medium uppercase text-muted-foreground">
+                              {courses.find((course) => course.id === groupCourseId)?.name ?? 'Unknown course'}
+                            </p>
+                            <div className="space-y-2">
+                              {courseBatches.map((batch) => (
+                                <label
+                                  key={batch.id}
+                                  className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-1.5 hover:bg-accent/50"
+                                >
+                                  <Checkbox
+                                    checked={selectedBatchIds.includes(batch.id)}
+                                    onCheckedChange={(checked) => toggleBatch(batch.id, checked === true)}
+                                  />
+                                  <span className="grid gap-0.5 text-sm leading-none">
+                                    <span className="font-medium text-foreground">{batch.batchCode}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {batch.plannedClassCount ?? 0} planned classes
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}
@@ -282,8 +352,8 @@ export function PaymentRuleFormDialog({ open, onOpenChange, rule }) {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Monthly payment is based on the configured number of classes. If fewer classes are
-              completed, the payment will be prorated based on completed classes.
+              This payment rule applies every month for the selected batch. Each month is prorated
+              by completed classes.
             </p>
 
             <FormField

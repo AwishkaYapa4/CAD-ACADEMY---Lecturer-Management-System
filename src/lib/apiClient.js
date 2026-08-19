@@ -42,40 +42,33 @@ export async function apiFetch(path, { method = 'GET', body } = {}) {
 }
 
 /**
- * Multipart upload with progress reporting — fetch() can't report upload
- * progress, so this uses XMLHttpRequest (same ergonomics as the existing
- * Firebase Storage uploads: `onProgress` receives a 0-100 number).
+ * PUTs a file straight to a presigned URL (e.g. R2) with progress reporting
+ * — fetch() can't report upload progress, so this uses XMLHttpRequest (same
+ * ergonomics as the old multipart uploads: `onProgress` receives a 0-100
+ * number). No auth header here — the presigned URL itself is the
+ * credential, and it points at R2, not this app's API.
  */
-export function apiUpload(path, formData, onProgress) {
-  return authHeader().then(
-    (headers) =>
-      new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.open('POST', `${API_BASE_URL}${path}`)
-        xhr.setRequestHeader('Authorization', headers.Authorization)
+export function uploadToSignedUrl(url, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url)
+    xhr.setRequestHeader('Content-Type', file.type)
 
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            onProgress?.(Math.round((event.loaded / event.total) * 100))
-          }
-        }
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress?.(Math.round((event.loaded / event.total) * 100))
+      }
+    }
 
-        xhr.onload = () => {
-          let parsed = null
-          try {
-            parsed = JSON.parse(xhr.responseText)
-          } catch {
-            // non-JSON response body, fall through to the status check below
-          }
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(parsed)
-          } else {
-            reject(new Error(parsed?.error || `Upload failed (${xhr.status})`))
-          }
-        }
-        xhr.onerror = () => reject(new Error('Network error during upload.'))
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve()
+      } else {
+        reject(new Error(`Upload to storage failed (${xhr.status})`))
+      }
+    }
+    xhr.onerror = () => reject(new Error('Network error while uploading the file.'))
 
-        xhr.send(formData)
-      })
-  )
+    xhr.send(file)
+  })
 }

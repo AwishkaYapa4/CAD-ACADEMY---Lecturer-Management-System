@@ -1,7 +1,13 @@
 import path from 'node:path'
 
-import { ALLOWED_MATERIAL_MIME_TYPES } from '../config/materialTypes.js'
-import { deleteRawMaterial, getSignedMaterialUrl, uploadRawMaterial } from '../services/cloudinaryService.js'
+import { ALLOWED_MATERIAL_MIME_TYPES, MAX_MATERIAL_FILE_SIZE_BYTES, MAX_MATERIAL_FILE_SIZE_MB } from '../config/materialTypes.js'
+import {
+  buildMaterialKey,
+  deleteMaterialObject,
+  getMaterialDownloadUrl as getSignedDownloadUrl,
+  getMaterialUploadUrl,
+  materialObjectExists,
+} from '../services/r2Service.js'
 import {
   adjustReportMaterialCount,
   createMaterial,
@@ -29,41 +35,73 @@ function parseWeek(value) {
   return week
 }
 
-export const uploadMaterial = asyncHandler(async (req, res) => {
-  if (!req.file) {
-    throw new ApiError(400, 'A file is required.')
+/** Shared by both endpoints below — the upload-url step and the save-metadata step must agree on the same filename/type/size rules. */
+function validateFileMeta({ filename, mimeType, sizeBytes }) {
+  const name = requireField(filename, 'File name')
+  const ext = path.extname(name).toLowerCase()
+  if (ALLOWED_MATERIAL_MIME_TYPES[mimeType] !== ext) {
+    throw new ApiError(400, 'Unsupported file type. Allowed: PDF, DOC, DOCX, PPT, PPTX.')
   }
+  const size = Number(sizeBytes)
+  if (!Number.isFinite(size) || size <= 0 || size > MAX_MATERIAL_FILE_SIZE_BYTES) {
+    throw new ApiError(400, `File exceeds the ${MAX_MATERIAL_FILE_SIZE_MB}MB limit.`)
+  }
+  return { name, ext, size }
+}
 
+/**
+ * Step 1 of the upload flow: validate + check permission, then hand back a
+ * short-lived presigned PUT URL so the browser can upload the file straight
+ * to R2 (the file's bytes never pass through this server).
+ */
+export const createMaterialUploadUrl = asyncHandler(async (req, res) => {
+  const courseId = requireField(req.body.courseId, 'Course')
+  const week = parseWeek(req.body.week)
+  const { ext } = validateFileMeta(req.body)
+
+  const course = await getCourseOrThrow(courseId)
+  await assertCanManageCourseMaterials(req.user, course)
+
+  const key = buildMaterialKey({ courseId, week, ext })
+  const { url, expiresAt } = await getMaterialUploadUrl(key, req.body.mimeType)
+  res.json({ uploadUrl: url, key, expiresAt })
+})
+
+/**
+ * Step 2: called once the browser's direct PUT to R2 has succeeded. Re-checks
+ * permission (time may have passed since step 1) and confirms the object
+ * actually exists in R2 before creating the Firestore record.
+ */
+export const uploadMaterial = asyncHandler(async (req, res) => {
   const courseId = requireField(req.body.courseId, 'Course')
   const week = parseWeek(req.body.week)
   const title = requireField(req.body.title, 'Title')
   const description =
     typeof req.body.description === 'string' ? req.body.description.trim().slice(0, 2000) : ''
+  const r2Key = requireField(req.body.r2Key, 'File key')
   // Optional — set when uploaded from the "Complete Class" flow
   // (SubmitReportPage), so materialCount on that report can stay in sync.
   const scheduleId =
     typeof req.body.scheduleId === 'string' && req.body.scheduleId.trim() ? req.body.scheduleId.trim() : null
 
-  const ext = path.extname(req.file.originalname).toLowerCase()
-  if (ALLOWED_MATERIAL_MIME_TYPES[req.file.mimetype] !== ext) {
-    throw new ApiError(400, 'Unsupported file type. Allowed: PDF, DOC, DOCX, PPT, PPTX.')
-  }
+  const { name: originalFilename, ext } = validateFileMeta({
+    filename: req.body.originalFilename,
+    mimeType: req.body.mimeType,
+    sizeBytes: req.body.sizeBytes,
+  })
 
-  // Validate the course + this caller's permission for it BEFORE spending an
-  // upload against Cloudinary.
   const course = await getCourseOrThrow(courseId)
   await assertCanManageCourseMaterials(req.user, course)
 
-  let uploadResult
-  try {
-    uploadResult = await uploadRawMaterial(req.file.buffer, {
-      courseId,
-      week,
-      originalFilename: req.file.originalname,
-    })
-  } catch (error) {
-    console.error('[materials-api] Cloudinary upload failed', error)
-    throw new ApiError(502, 'Failed to upload the file to storage. Please try again.')
+  // r2Key is expected to have been issued by createMaterialUploadUrl for
+  // this exact course/week — reject anything else outright rather than let
+  // a caller point a material record at an arbitrary key.
+  if (!r2Key.startsWith(`materials/${courseId}/week-${week}/`)) {
+    throw new ApiError(400, 'File key does not match this course/week.')
+  }
+
+  if (!(await materialObjectExists(r2Key))) {
+    throw new ApiError(400, 'Upload not found in storage. Please try uploading again.')
   }
 
   try {
@@ -72,13 +110,11 @@ export const uploadMaterial = asyncHandler(async (req, res) => {
       week,
       title,
       description,
-      originalFilename: req.file.originalname,
-      cloudinaryPublicId: uploadResult.public_id,
-      cloudinaryAssetId: uploadResult.asset_id,
-      resourceType: uploadResult.resource_type,
+      originalFilename,
+      r2Key,
       format: ext.replace('.', ''),
-      mimeType: req.file.mimetype,
-      sizeBytes: req.file.size,
+      mimeType: req.body.mimeType,
+      sizeBytes: Number(req.body.sizeBytes),
       uploadedBy: req.user.uid,
       uploadedByName: req.user.fullName ?? req.user.email ?? '',
       uploadedByRole: req.user.role,
@@ -89,10 +125,10 @@ export const uploadMaterial = asyncHandler(async (req, res) => {
     }
     res.status(201).json({ material })
   } catch (error) {
-    // Firestore write failed after the Cloudinary upload already succeeded —
-    // clean up the now-orphaned asset rather than leave it unreferenced.
-    console.error('[materials-api] Failed to save material metadata, rolling back Cloudinary asset', error)
-    await deleteRawMaterial(uploadResult.public_id).catch(() => {})
+    // Firestore write failed after the R2 object already exists — clean up
+    // the now-orphaned object rather than leave it unreferenced.
+    console.error('[materials-api] Failed to save material metadata, rolling back R2 object', error)
+    await deleteMaterialObject(r2Key).catch(() => {})
     throw new ApiError(500, 'Failed to save the material. Please try again.')
   }
 })
@@ -120,7 +156,7 @@ export const getMaterialDownloadUrl = asyncHandler(async (req, res) => {
   const course = await getCourseOrThrow(material.courseId)
   await assertCanViewCourseMaterials(req.user, course)
 
-  const { url, expiresAt } = getSignedMaterialUrl(material.cloudinaryPublicId, { attachment: true })
+  const { url, expiresAt } = await getSignedDownloadUrl(material.r2Key, material.originalFilename)
   res.json({
     url,
     expiresAt,
@@ -146,8 +182,8 @@ export const removeMaterial = asyncHandler(async (req, res) => {
     throw new ApiError(403, 'You do not have permission to delete this material.')
   }
 
-  await deleteRawMaterial(material.cloudinaryPublicId).catch((error) => {
-    console.error('[materials-api] Failed to delete Cloudinary asset', material.cloudinaryPublicId, error)
+  await deleteMaterialObject(material.r2Key).catch((error) => {
+    console.error('[materials-api] Failed to delete R2 object', material.r2Key, error)
   })
   await deleteMaterialDoc(material.id)
   if (material.scheduleId) {

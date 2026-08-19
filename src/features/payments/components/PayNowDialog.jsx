@@ -15,10 +15,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
-import { useApprovePayment, useMarkPaymentPaid } from '@/features/payments/hooks/usePayments'
+import { useApprovePayment } from '@/features/payments/hooks/usePayments'
 import { monthKeyLabel } from '@/features/payments/utils/monthlyCalc'
 
-/** Single-step payment: locks the counted reports, creates the payment doc, and marks it paid — all in one action. */
+/** Single-step payment: locks the counted reports, creates the payment doc, and marks it paid in one action. */
 export function PayNowDialog({
   open,
   onOpenChange,
@@ -31,20 +31,23 @@ export function PayNowDialog({
   monthlyClassCount,
   monthlyAmount,
   rate,
+  regularClassCount,
+  regularAmount,
+  extraClassCount,
+  extraAmount,
   totalAmount,
   currency,
 }) {
   const { profile } = useAuth()
   const approvePayment = useApprovePayment()
-  const markPaid = useMarkPaymentPaid()
   const [paymentReference, setPaymentReference] = useState('')
   const [officeNote, setOfficeNote] = useState('')
 
-  const isPending = approvePayment.isPending || markPaid.isPending
+  const isPending = approvePayment.isPending
 
   const handleConfirm = async () => {
     try {
-      const paymentId = await approvePayment.mutateAsync({
+      await approvePayment.mutateAsync({
         lecturerId: rule.lecturerId,
         courseId: rule.courseId,
         batchId: rule.batchId,
@@ -55,12 +58,17 @@ export function PayNowDialog({
         monthlyClassCount,
         monthlyAmount,
         rate,
+        regularClassCount,
+        regularAmount,
+        extraClassCount,
+        extraAmount,
         totalAmount,
         currency,
         approvedBy: profile?.fullName ?? profile?.email ?? '',
+        paymentReference,
+        officeNote,
       })
-      await markPaid.mutateAsync({ paymentId, data: { paymentReference, officeNote } })
-      toast.success(`Payment done for ${lecturer?.fullName ?? 'lecturer'}`)
+      toast.success(`Payment sent for ${lecturer?.fullName ?? 'lecturer'}`)
       onOpenChange(false)
       setPaymentReference('')
       setOfficeNote('')
@@ -75,11 +83,46 @@ export function PayNowDialog({
         <DialogHeader>
           <DialogTitle>Pay {lecturer?.fullName}?</DialogTitle>
           <DialogDescription>
-            {monthKeyLabel(monthKey)} · {completed} of {monthlyClassCount} configured classes
-            completed · {currency} {totalAmount?.toFixed(2)}. These classes will be locked from
-            any future payment cycle and the payment will be marked as paid immediately.
+            {monthKeyLabel(monthKey)} - {completed} of {monthlyClassCount} configured classes completed
+            {extraClassCount > 0 ? ` - ${extraClassCount} extra class${extraClassCount === 1 ? '' : 'es'}` : ''}
+            {' - '}
+            {currency} {totalAmount?.toFixed(2)}. These classes will be locked from future payment
+            cycles and the lecturer can confirm receipt from their dashboard.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="grid gap-2 text-sm">
+          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+            <span>
+              <span className="block font-medium text-foreground">Monthly payment</span>
+              <span className="text-xs text-muted-foreground">
+                {regularClassCount} class{regularClassCount === 1 ? '' : 'es'} at {currency} {rate?.toFixed(2)}
+              </span>
+            </span>
+            <span className="font-semibold tabular-nums text-foreground">
+              {currency} {regularAmount?.toFixed(2)}
+            </span>
+          </div>
+          {extraClassCount > 0 ? (
+            <div className="flex items-center justify-between rounded-lg border border-warning/25 bg-warning/10 px-3 py-2">
+              <span>
+                <span className="block font-medium text-warning">Extra class payment</span>
+                <span className="text-xs text-muted-foreground">
+                  {extraClassCount} extra class{extraClassCount === 1 ? '' : 'es'} at {currency} {rate?.toFixed(2)}
+                </span>
+              </span>
+              <span className="font-semibold tabular-nums text-warning">
+                {currency} {extraAmount?.toFixed(2)}
+              </span>
+            </div>
+          ) : null}
+          <div className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2">
+            <span className="font-medium text-foreground">Total payable</span>
+            <span className="font-semibold tabular-nums text-foreground">
+              {currency} {totalAmount?.toFixed(2)}
+            </span>
+          </div>
+        </div>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -102,7 +145,7 @@ export function PayNowDialog({
           </Button>
           <Button onClick={handleConfirm} disabled={isPending}>
             {isPending ? <Loader2 className="size-4 animate-spin" /> : null}
-            Pay Now
+            Record Payment Sent
           </Button>
         </DialogFooter>
       </DialogContent>

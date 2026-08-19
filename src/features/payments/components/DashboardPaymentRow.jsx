@@ -27,6 +27,9 @@ export function DashboardPaymentRow({
   onClick,
 }) {
   const percent = target > 0 ? Math.min(100, Math.round((completed / target) * 100)) : 0
+  const extraClassCount = target > 0 ? Math.max(0, completed - target) : 0
+  const paymentPerClass = target > 0 ? monthlyAmount / target : 0
+  const extraPayment = extraClassCount * paymentPerClass
 
   return (
     <button
@@ -52,6 +55,11 @@ export function DashboardPaymentRow({
           >
             {completed} / {target || '—'} Classes
           </Badge>
+          {extraClassCount > 0 ? (
+            <Badge variant="outline" className="border-transparent bg-warning/10 text-warning">
+              +{extraClassCount} Extra
+            </Badge>
+          ) : null}
         </div>
         {scopeLabel ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{scopeLabel}</p> : null}
 
@@ -72,6 +80,10 @@ export function DashboardPaymentRow({
         {paid ? (
           <p className="mt-0.5 flex items-center justify-end gap-1 text-xs text-success">
             <CheckCircle2 className="size-3.5" /> Paid
+          </p>
+        ) : extraClassCount > 0 ? (
+          <p className="mt-0.5 text-xs font-medium text-warning">
+            Extra: {formatCurrency(extraPayment, currency)}
           </p>
         ) : (
           <p className="mt-0.5 text-xs text-muted-foreground">of {formatCurrency(monthlyAmount, currency)}</p>

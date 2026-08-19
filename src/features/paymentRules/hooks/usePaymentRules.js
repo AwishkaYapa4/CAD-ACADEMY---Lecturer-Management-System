@@ -5,6 +5,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection'
 import {
   PAYMENT_RULE_ORDER,
   createPaymentRule,
+  createPaymentRulesForScopes,
   getPaymentRuleAmount,
   lecturerRuleConstraints,
   paymentRulesCollection,
@@ -94,6 +95,12 @@ export function usePaymentRuleAmounts(ruleIds) {
 export function useCreatePaymentRule() {
   return useMutation({
     mutationFn: async (data) => createPaymentRule(data),
+  })
+}
+
+export function useCreatePaymentRulesForScopes() {
+  return useMutation({
+    mutationFn: async (data) => createPaymentRulesForScopes(data),
   })
 }
 

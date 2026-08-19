@@ -1,30 +1,48 @@
-import { apiFetch, apiUpload } from '@/lib/apiClient'
+import { apiFetch, uploadToSignedUrl } from '@/lib/apiClient'
 
 /**
- * Client for the Cloudinary-backed lecture material Materials API
+ * Client for the R2-backed lecture material Materials API
  * (server/routes/materials.routes.js) — a course + week material library,
  * distinct from the Firebase-Storage-backed classMaterials feature in
  * materialService.js (which attaches files to one class report). Nothing
- * here talks to Firestore directly; the backend holds the Cloudinary secret
- * and the Firebase Admin credentials.
+ * here talks to Firestore directly; the backend holds the R2 secret and the
+ * Firebase Admin credentials.
  */
 
 /**
+ * Three-step upload: get a presigned R2 PUT URL, upload the file straight to
+ * R2 (bypassing the Materials API entirely for the actual bytes), then save
+ * the metadata. `onProgress` tracks the middle step, which is the one that
+ * actually takes time.
+ *
  * `scheduleId` is optional — set when uploading from the "Complete Class"
  * flow (SubmitReportPage) so the backend can keep that report's
  * materialCount in sync. Every lecturer upload goes through that flow now;
  * Admin's general library page (AdminMaterialsPage) omits it.
  */
-export function uploadLectureMaterial({ file, courseId, week, title, description, scheduleId }, onProgress) {
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('courseId', courseId)
-  formData.append('week', String(week))
-  formData.append('title', title)
-  if (description) formData.append('description', description)
-  if (scheduleId) formData.append('scheduleId', scheduleId)
+export async function uploadLectureMaterial({ file, courseId, week, title, description, scheduleId }, onProgress) {
+  const { uploadUrl, key } = await apiFetch('/api/materials/upload-url', {
+    method: 'POST',
+    body: { courseId, week, filename: file.name, mimeType: file.type, sizeBytes: file.size },
+  })
 
-  return apiUpload('/api/materials/upload', formData, onProgress).then((res) => res.material)
+  await uploadToSignedUrl(uploadUrl, file, onProgress)
+
+  const res = await apiFetch('/api/materials', {
+    method: 'POST',
+    body: {
+      courseId,
+      week,
+      title,
+      description,
+      scheduleId,
+      r2Key: key,
+      originalFilename: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    },
+  })
+  return res.material
 }
 
 export function getCourseMaterials(courseId) {
@@ -36,7 +54,7 @@ export function getMyLectureMaterials() {
   return apiFetch('/api/materials/mine').then((res) => res.materials)
 }
 
-/** Returns { url, expiresAt, originalFilename, title } — a short-lived signed Cloudinary URL. */
+/** Returns { url, expiresAt, originalFilename, title } — a short-lived signed R2 URL. */
 export function getLectureMaterialDownload(materialId) {
   return apiFetch(`/api/materials/${materialId}/download`)
 }

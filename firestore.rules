@@ -248,6 +248,11 @@ service cloud.firestore {
     match /payments/{paymentId} {
       allow read: if isStaffOrAdmin() || ownsLecturerId(resource.data.lecturerId);
       allow write: if isAdmin();
+      allow update: if isLecturer()
+        && resource.data.lecturerId == myLecturerId()
+        && resource.data.status == 'approved'
+        && request.resource.data.status == 'paid'
+        && onlyAffects(['status', 'paidAt']);
 
       match /private/{docId} {
         allow read: if isStaffOrAdmin()

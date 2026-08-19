@@ -39,6 +39,7 @@ export function lecturerRuleConstraints(lecturerId) {
  * the batch-scoped one as more specific and prefers it for that batch's reports.
  */
 async function assertNoDuplicateActiveRule({ lecturerId, courseId, batchId, periodMonth, excludeRuleId }) {
+  const ruleMonth = periodMonth || null
   const existing = await paymentRulesCollection.getAll([where('lecturerId', '==', lecturerId)])
   const clash = existing.find(
     (r) =>
@@ -46,10 +47,10 @@ async function assertNoDuplicateActiveRule({ lecturerId, courseId, batchId, peri
       r.active !== false &&
       r.courseId === courseId &&
       (r.batchId || null) === (batchId || null) &&
-      (r.periodMonth || null) === (periodMonth || null)
+      (r.periodMonth || null) === ruleMonth
   )
   if (clash) {
-    throw new Error('This lecturer already has an active payment rule for this course/batch/month.')
+    throw new Error('This lecturer already has an active payment rule for this course/batch.')
   }
 }
 
@@ -78,7 +79,7 @@ export async function createPaymentRule({
     lecturerId,
     courseId,
     batchId: batchId || null,
-    periodMonth,
+    periodMonth: periodMonth || null,
     monthlyClassCount: Number(monthlyClassCount) || 0,
     active: true,
     notes: notes || '',
@@ -93,6 +94,59 @@ export async function createPaymentRule({
   return ruleId
 }
 
+export async function createPaymentRulesForScopes({
+  lecturerId,
+  scopes,
+  periodMonth,
+  monthlyClassCount,
+  monthlyAmount,
+  currency,
+  notes,
+}) {
+  if (!Array.isArray(scopes) || scopes.length === 0) {
+    throw new Error('Select at least one course/batch for this payment rule.')
+  }
+
+  const ruleMonth = periodMonth || null
+  const existing = await paymentRulesCollection.getAll([where('lecturerId', '==', lecturerId)])
+  const duplicateScope = scopes.find((scope) =>
+    existing.some(
+      (rule) =>
+        rule.active !== false &&
+        rule.courseId === scope.courseId &&
+        (rule.batchId || null) === (scope.batchId || null) &&
+        (rule.periodMonth || null) === ruleMonth
+    )
+  )
+
+  if (duplicateScope) {
+    throw new Error('This lecturer already has an active payment rule for one of the selected batches.')
+  }
+
+  const createdRuleIds = []
+  for (const scope of scopes) {
+    const ruleId = await paymentRulesCollection.create({
+      lecturerId,
+      courseId: scope.courseId,
+      batchId: scope.batchId || null,
+      periodMonth: ruleMonth,
+      monthlyClassCount: Number(monthlyClassCount) || 0,
+      active: true,
+      notes: notes || '',
+    })
+
+    await setDoc(privateAmountRef(ruleId), {
+      monthlyAmount: Number(monthlyAmount) || 0,
+      currency,
+      updatedAt: serverTimestamp(),
+    })
+
+    createdRuleIds.push(ruleId)
+  }
+
+  return createdRuleIds
+}
+
 export async function updatePaymentRule(
   ruleId,
   { lecturerId, courseId, batchId, periodMonth, monthlyClassCount, monthlyAmount, currency, notes }
@@ -102,7 +156,7 @@ export async function updatePaymentRule(
   await paymentRulesCollection.update(ruleId, {
     courseId,
     batchId: batchId || null,
-    periodMonth,
+    periodMonth: periodMonth || null,
     monthlyClassCount: Number(monthlyClassCount) || 0,
     notes: notes || '',
   })

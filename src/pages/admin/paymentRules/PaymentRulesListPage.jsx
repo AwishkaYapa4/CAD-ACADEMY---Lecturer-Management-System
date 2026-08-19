@@ -1,19 +1,14 @@
 import { useMemo, useState } from 'react'
-import { MoreHorizontal, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { DataTable } from '@/components/common/DataTable'
 import { PageHeader } from '@/components/common/PageHeader'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { useBatches } from '@/features/batches/hooks/useBatches'
+import { deriveBatchStatus } from '@/features/batches/services/batchService'
 import { useCourses } from '@/features/courses/hooks/useCourses'
 import { useLecturers } from '@/features/lecturers/hooks/useLecturers'
 import { PaymentRuleFormDialog } from '@/features/paymentRules/components/PaymentRuleFormDialog'
@@ -22,7 +17,7 @@ import {
   usePaymentRules,
   useSetPaymentRuleActive,
 } from '@/features/paymentRules/hooks/usePaymentRules'
-import { monthKeyLabel } from '@/features/payments/utils/monthlyCalc'
+import { BATCH_STATUS } from '@/constants/statuses'
 
 /** Amount lives in an Admin-only private subcollection — fetched per row rather than bulk-loaded. */
 function MonthlyAmountCell({ ruleId }) {
@@ -30,6 +25,15 @@ function MonthlyAmountCell({ ruleId }) {
   if (loading) return <span className="text-muted-foreground">…</span>
   if (!amount) return '—'
   return `${amount.currency} ${amount.monthlyAmount?.toFixed(2)} / mo`
+}
+
+// A batch is "ended" once all its planned classes are completed — same
+// completion rule the lecturer dashboard uses (deriveBatchStatus), not the
+// batch's endDate, since a batch can wrap up early or run past its planned
+// end date. Once a batch is done, its payment rule stops applying.
+function isBatchEnded(batch) {
+  if (!batch) return false
+  return deriveBatchStatus(batch) === BATCH_STATUS.COMPLETED
 }
 
 export default function PaymentRulesListPage() {
@@ -48,6 +52,11 @@ export default function PaymentRulesListPage() {
   )
   const courseById = useMemo(() => Object.fromEntries(courses.map((c) => [c.id, c])), [courses])
   const batchById = useMemo(() => Object.fromEntries(batches.map((b) => [b.id, b])), [batches])
+  const statusForRule = (rule) => {
+    if (rule.active === false) return { label: 'Disabled', tone: 'muted' }
+    if (rule.batchId && isBatchEnded(batchById[rule.batchId])) return { label: 'Batch ended', tone: 'muted' }
+    return { label: 'Active', tone: 'success' }
+  }
 
   const columns = [
     {
@@ -66,9 +75,14 @@ export default function PaymentRulesListPage() {
       render: (row) => (row.batchId ? batchById[row.batchId]?.batchCode ?? '—' : 'All batches'),
     },
     {
-      key: 'periodMonth',
-      header: 'Month',
-      render: (row) => (row.periodMonth ? monthKeyLabel(row.periodMonth) : 'All months'),
+      key: 'period',
+      header: 'Rule period',
+      render: (row) => (row.periodMonth ? row.periodMonth : 'Until batch ends'),
+    },
+    {
+      key: 'monthlyClassCount',
+      header: 'Classes / month',
+      render: (row) => row.monthlyClassCount ?? 'â€”',
     },
     {
       key: 'amount',
@@ -79,37 +93,33 @@ export default function PaymentRulesListPage() {
     {
       key: 'active',
       header: 'Status',
-      render: (row) => (
-        <StatusBadge tone={row.active === false ? 'muted' : 'success'}>
-          {row.active === false ? 'Disabled' : 'Active'}
-        </StatusBadge>
-      ),
+      render: (row) => {
+        const status = statusForRule(row)
+        return <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+      },
     },
     {
       key: 'actions',
       header: '',
       className: 'text-right',
-      render: (row) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setFormState({ open: true, rule: row })}>
+      render: (row) => {
+        const batchEnded = row.batchId && isBatchEnded(batchById[row.batchId])
+        return (
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setFormState({ open: true, rule: row })}>
               Edit
-            </DropdownMenuItem>
-            {row.active === false ? (
-              <DropdownMenuItem onClick={() => setActiveTarget(row)}>Enable</DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem variant="destructive" onClick={() => setActiveTarget(row)}>
-                Disable
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+            </Button>
+            <Button
+              variant={row.active === false ? 'default' : 'destructive'}
+              size="sm"
+              disabled={batchEnded}
+              onClick={() => setActiveTarget(row)}
+            >
+              {row.active === false ? 'Enable' : 'Disable'}
+            </Button>
+          </div>
+        )
+      },
     },
   ]
 

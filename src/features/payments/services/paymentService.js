@@ -45,9 +45,15 @@ export async function approvePayment({
   monthlyClassCount,
   monthlyAmount,
   rate,
+  regularClassCount,
+  regularAmount,
+  extraClassCount,
+  extraAmount,
   totalAmount,
   currency,
   approvedBy,
+  paymentReference,
+  officeNote,
 }) {
   const paymentRef = doc(paymentsCollection.colRef())
   const batchWrite = writeBatch(db)
@@ -64,6 +70,8 @@ export async function approvePayment({
     status: PAYMENT_CYCLE_STATUS.APPROVED,
     approvedAt: serverTimestamp(),
     approvedBy: approvedBy || '',
+    paymentReference: paymentReference || '',
+    officeNote: officeNote || '',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -82,6 +90,10 @@ export async function approvePayment({
     monthlyAmount,
     monthlyClassCount: monthlyClassCount ?? null,
     rate,
+    regularClassCount: regularClassCount ?? completedSchedules.length,
+    regularAmount: regularAmount ?? totalAmount,
+    extraClassCount: extraClassCount ?? 0,
+    extraAmount: extraAmount ?? 0,
     totalAmount,
     currency,
     calculatedAt: serverTimestamp(),
@@ -97,6 +109,13 @@ export async function markPaymentPaid(paymentId, { paymentReference, officeNote 
     paidAt: serverTimestamp(),
     paymentReference: paymentReference || '',
     officeNote: officeNote || '',
+  })
+}
+
+export async function confirmPaymentReceived(paymentId) {
+  await paymentsCollection.update(paymentId, {
+    status: PAYMENT_CYCLE_STATUS.PAID,
+    paidAt: serverTimestamp(),
   })
 }
 

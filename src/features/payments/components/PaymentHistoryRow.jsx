@@ -40,9 +40,16 @@ export function PaymentHistoryRow({ payment, lecturer, course, batch, showAmount
             {payment.paymentReference ? ` · Ref: ${payment.paymentReference}` : null}
           </p>
           {showAmount && amount ? (
-            <p className="text-sm font-medium text-foreground">
-              {amount.currency} {amount.totalAmount?.toFixed(2)}
-            </p>
+            <div className="space-y-1 text-sm font-medium">
+              <p className="text-foreground">
+                Total payment: {amount.currency} {amount.totalAmount?.toFixed(2)}
+              </p>
+              {amount.extraClassCount > 0 ? (
+                <p className="text-warning">
+                  Extra class payment: {amount.extraClassCount} classes - {amount.currency} {amount.extraAmount?.toFixed(2)}
+                </p>
+              ) : null}
+            </div>
           ) : null}
           {payment.adjustmentReason ? (
             <p className="text-xs text-muted-foreground">Adjusted: {payment.adjustmentReason}</p>

@@ -1,4 +1,4 @@
-// Allowed file types/size for the Cloudinary-backed lecture material upload
+// Allowed file types/size for the R2-backed lecture material upload
 // (src/features/materials — course + week library, uploaded via the
 // Materials API). Deliberately narrower than the existing class-report
 // attachments in src/constants/storage.js (documents only, no zip/images) —

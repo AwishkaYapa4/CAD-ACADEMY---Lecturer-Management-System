@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowRight, CheckCircle2 } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DashboardWelcomeBanner } from '@/components/common/DashboardWelcomeBanner'
 import { ROUTES } from '@/constants/routes'
 import { useBatches } from '@/features/batches/hooks/useBatches'
@@ -8,6 +12,7 @@ import { useLecturers } from '@/features/lecturers/hooks/useLecturers'
 import { PaymentReceivedCard } from '@/features/payments/components/PaymentReceivedCard'
 import { PaymentSummaryBar } from '@/features/payments/components/PaymentSummaryBar'
 import { PendingPaymentsCard } from '@/features/payments/components/PendingPaymentsCard'
+import { DashboardPaymentRow } from '@/features/payments/components/DashboardPaymentRow'
 import { usePaymentReadinessSummary } from '@/features/payments/hooks/usePaymentReadinessSummary'
 import { calculateMonthlyPayment, monthKeyFor } from '@/features/payments/utils/monthlyCalc'
 import { usePaymentRuleAmounts } from '@/features/paymentRules/hooks/usePaymentRules'
@@ -23,6 +28,7 @@ import { useAuth } from '@/hooks/useAuth'
  * LecturerPaymentHighlights) — nothing here is hardcoded.
  */
 export default function AdminDashboardPage() {
+  const navigate = useNavigate()
   const { profile } = useAuth()
   const [monthKey, setMonthKey] = useState(monthKeyFor())
 
@@ -63,6 +69,13 @@ export default function AdminDashboardPage() {
 
   const pendingRows = useMemo(() => enrichedRows.filter((row) => !row.alreadyPaid), [enrichedRows])
   const paidRows = useMemo(() => enrichedRows.filter((row) => row.alreadyPaid), [enrichedRows])
+  const completedPendingRows = useMemo(
+    () =>
+      pendingRows.filter(
+        (row) => Number(row.rule.monthlyClassCount) > 0 && row.completed >= Number(row.rule.monthlyClassCount)
+      ),
+    [pendingRows]
+  )
 
   const currency = enrichedRows.find((row) => row.currency)?.currency ?? ''
   const totalPending = pendingRows.reduce((sum, row) => sum + row.finalPayment, 0)
@@ -91,6 +104,43 @@ export default function AdminDashboardPage() {
         <PendingPaymentsCard rows={pendingRows} loading={loading} viewAllHref={ROUTES.ADMIN_PAYMENT_READINESS} />
         <PaymentReceivedCard rows={paidRows} loading={loading} viewAllHref={ROUTES.ADMIN_PAYMENT_READINESS} />
       </div>
+
+      {!loading && completedPendingRows.length > 0 ? (
+        <Card className="border-success/35 bg-success/5 shadow-sm ring-1 ring-success/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-success">
+              <CheckCircle2 className="size-5" />
+              Completed Classes Ready For Payment
+            </CardTitle>
+            <CardDescription>
+              {completedPendingRows.length} payment {completedPendingRows.length === 1 ? 'rule has' : 'rules have'} completed this month&apos;s class target.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {completedPendingRows.slice(0, 5).map((row) => (
+              <DashboardPaymentRow
+                key={row.rowKey ?? row.rule.id}
+                lecturerName={row.lecturerName}
+                scopeLabel={row.scopeLabel}
+                completed={row.completed}
+                target={row.rule.monthlyClassCount}
+                currency={row.currency}
+                finalPayment={row.finalPayment}
+                monthlyAmount={row.monthlyAmount}
+                paid={false}
+                onClick={() => navigate(ROUTES.ADMIN_PAYMENT_READINESS)}
+              />
+            ))}
+            <Button
+              variant="outline"
+              className="w-full border-success/30 text-success hover:bg-success/10 hover:text-success"
+              onClick={() => navigate(ROUTES.ADMIN_PAYMENT_READINESS)}
+            >
+              Review Ready Payments <ArrowRight />
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <PaymentSummaryBar
         totalPayable={totalPending + totalReceived}

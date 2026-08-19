@@ -6,6 +6,7 @@ import {
   PAYMENT_ORDER,
   adjustPayment,
   approvePayment,
+  confirmPaymentReceived,
   getPaymentAmount,
   lecturerPaymentConstraints,
   markPaymentPaid,
@@ -54,6 +55,14 @@ export function useMarkPaymentPaid() {
   return useMutation({
     mutationFn: async ({ paymentId, data }) => {
       await markPaymentPaid(paymentId, data)
+    },
+  })
+}
+
+export function useConfirmPaymentReceived() {
+  return useMutation({
+    mutationFn: async (paymentId) => {
+      await confirmPaymentReceived(paymentId)
     },
   })
 }

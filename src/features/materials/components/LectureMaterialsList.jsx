@@ -43,7 +43,7 @@ function groupByCourseThenWeek(materials, getCourseName) {
 }
 
 /**
- * Lists Cloudinary-backed lecture materials, grouped by week (or by course
+ * Lists R2-backed lecture materials, grouped by week (or by course
  * then week when `getCourseName` is passed) — used by the Lecturer, Staff,
  * and Admin materials pages alike. `canDelete(material)` decides whether the
  * trash icon shows per row; omit it to render a view/download-only list.

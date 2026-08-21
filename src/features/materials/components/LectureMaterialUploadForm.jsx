@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AlertCircle, CheckCircle2, Loader2, UploadCloud } from 'lucide-react'
@@ -86,6 +86,12 @@ export function LectureMaterialUploadForm({
     defaultValues: { courseId: fixedCourseId ?? '' },
   })
 
+  useEffect(() => {
+    if (fixedCourseId) {
+      form.setValue('courseId', fixedCourseId, { shouldValidate: true })
+    }
+  }, [fixedCourseId, form])
+
   const handleFileChange = (e) => {
     const selected = e.target.files?.[0] ?? null
     e.target.value = ''
@@ -104,17 +110,18 @@ export function LectureMaterialUploadForm({
     setFeedback(null)
     setProgress(0)
     try {
+      const courseId = fixedCourseId ?? values.courseId
       await beforeUpload?.()
       await uploadMaterial.mutateAsync({
         file,
-        courseId: values.courseId,
+        courseId,
         week: DEFAULT_MATERIAL_WEEK,
         title: titleFromFilename(file.name),
         scheduleId,
         onProgress: setProgress,
       })
       setFeedback({ type: 'success', message: `"${file.name}" uploaded successfully.` })
-      form.reset({ courseId: values.courseId })
+      form.reset({ courseId })
       setFile(null)
     } catch (error) {
       setFeedback({ type: 'error', message: error.message || 'Upload failed. Please try again.' })

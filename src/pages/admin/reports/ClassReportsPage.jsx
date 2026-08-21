@@ -13,7 +13,6 @@ import {
 import { DataTable } from '@/components/common/DataTable'
 import { EmptyState } from '@/components/common/EmptyState'
 import { FilterBar } from '@/components/common/FilterBar'
-import { MaterialListItem } from '@/components/common/MaterialListItem'
 import { PageHeader } from '@/components/common/PageHeader'
 import { StatusPill } from '@/components/common/StatusPill'
 import { REPORT_STATUS } from '@/constants/statuses'
@@ -21,8 +20,8 @@ import { useBatches } from '@/features/batches/hooks/useBatches'
 import { useClassReports } from '@/features/classReports/hooks/useClassReports'
 import { useCourses } from '@/features/courses/hooks/useCourses'
 import { useLecturers } from '@/features/lecturers/hooks/useLecturers'
-import { useScheduleMaterials } from '@/features/materials/hooks/useMaterials'
-import { getMaterialDownloadUrl } from '@/features/materials/services/materialService'
+import { LectureMaterialsList } from '@/features/materials/components/LectureMaterialsList'
+import { useCourseMaterials } from '@/features/materials/hooks/useLectureMaterials'
 import { monthKeyFor } from '@/features/payments/utils/monthlyCalc'
 import { paymentsCollection } from '@/features/payments/services/paymentService'
 import { useSchedules } from '@/features/schedules/hooks/useSchedules'
@@ -46,7 +45,7 @@ function buildTimeline({ schedule, report, payment, materials }) {
 
   add('Class scheduled', schedule?.createdAt)
   add('Report draft started', report?.createdAt)
-  materials.forEach((material) => add(`Material uploaded — ${material.fileName}`, material.uploadedAt))
+  materials.forEach((material) => add(`Material uploaded — ${material.title ?? material.originalFilename}`, material.uploadedAt))
   add('Report submitted — class completed', report?.submittedAt)
   add('Payment approved', payment?.approvedAt)
   add('Payment marked paid', payment?.paidAt)
@@ -57,13 +56,12 @@ function buildTimeline({ schedule, report, payment, materials }) {
 const EMPTY_FILTERS = { lecturerId: '', courseId: '', batchId: '', status: '' }
 
 function ReportDetailSheet({ report, lecturer, batch, schedule, open, onOpenChange }) {
-  const { data: materials } = useScheduleMaterials(report?.id)
+  const { data: courseMaterials, loading: materialsLoading } = useCourseMaterials(report?.courseId)
   const { data: payment } = useFirestoreDoc(paymentsCollection.subscribeToDoc, report?.paymentId)
-
-  const handleDownload = async (material) => {
-    const url = await getMaterialDownloadUrl(material)
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
+  const materials = useMemo(
+    () => courseMaterials.filter((material) => material.scheduleId === report?.id),
+    [courseMaterials, report?.id]
+  )
 
   const scheduledDate = toDate(schedule?.classDate)
   const completedDate = toDate(schedule?.completedAt)
@@ -109,9 +107,7 @@ function ReportDetailSheet({ report, lecturer, batch, schedule, open, onOpenChan
             {materials.length > 0 ? (
               <div className="space-y-2 border-t border-border pt-4">
                 <p className="text-xs font-medium text-muted-foreground uppercase">Materials</p>
-                {materials.map((material) => (
-                  <MaterialListItem key={material.id} material={material} onDownload={handleDownload} />
-                ))}
+                <LectureMaterialsList materials={materials} loading={materialsLoading} />
               </div>
             ) : (
               <p className="border-t border-border pt-4 text-xs text-muted-foreground">

@@ -6,6 +6,7 @@ import {
   BATCH_ORDER,
   batchesCollection,
   createBatch,
+  deleteBatch,
   lecturerBatchConstraints,
   setBatchActive,
   updateBatch,
@@ -40,5 +41,11 @@ export function useUpdateBatch() {
 export function useSetBatchActive() {
   return useMutation({
     mutationFn: ({ batchId, active }) => setBatchActive(batchId, active),
+  })
+}
+
+export function useDeleteBatch() {
+  return useMutation({
+    mutationFn: (batchId) => deleteBatch(batchId),
   })
 }

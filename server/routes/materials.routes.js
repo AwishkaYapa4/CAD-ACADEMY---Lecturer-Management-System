@@ -3,6 +3,7 @@ import { Router } from 'express'
 import {
   createMaterialUploadUrl,
   getMaterialDownloadUrl,
+  listAllMaterials,
   listCourseMaterials,
   listMyMaterials,
   removeMaterial,
@@ -26,6 +27,8 @@ router.get('/courses/:courseId/materials', authenticate, listCourseMaterials)
 
 // Materials the caller uploaded themselves — powers the (view-only) My Materials page.
 router.get('/materials/mine', authenticate, listMyMaterials)
+
+router.get('/materials', authenticate, requireRole('admin', 'staff'), listAllMaterials)
 
 router.get('/materials/:id/download', authenticate, getMaterialDownloadUrl)
 

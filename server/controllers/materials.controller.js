@@ -13,6 +13,7 @@ import {
   createMaterial,
   deleteMaterial as deleteMaterialDoc,
   getMaterialById,
+  listAllMaterials as listAllMaterialDocs,
   listMaterialsByCourse,
   listMaterialsByUploader,
 } from '../services/materialsService.js'
@@ -144,6 +145,11 @@ export const listCourseMaterials = asyncHandler(async (req, res) => {
 /** Materials the caller themselves uploaded — powers the (view-only) My Materials page. */
 export const listMyMaterials = asyncHandler(async (req, res) => {
   const materials = await listMaterialsByUploader(req.user.uid)
+  res.json({ materials })
+})
+
+export const listAllMaterials = asyncHandler(async (req, res) => {
+  const materials = await listAllMaterialDocs()
   res.json({ materials })
 })
 

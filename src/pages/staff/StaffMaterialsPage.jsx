@@ -6,45 +6,39 @@ import { Input } from '@/components/ui/input'
 import { DataTable } from '@/components/common/DataTable'
 import { PageHeader } from '@/components/common/PageHeader'
 import { useCourses } from '@/features/courses/hooks/useCourses'
-import { useLecturers } from '@/features/lecturers/hooks/useLecturers'
-import { useAllMaterials } from '@/features/materials/hooks/useMaterials'
-import { getMaterialDownloadUrl } from '@/features/materials/services/materialService'
+import { useAllLectureMaterials } from '@/features/materials/hooks/useLectureMaterials'
+import { getLectureMaterialDownload } from '@/features/materials/services/lectureMaterialService'
 import { toDate } from '@/utils/formatters'
 
 export default function StaffMaterialsPage() {
-  const { data: materials, loading } = useAllMaterials()
+  const { data: materials, loading } = useAllLectureMaterials()
   const { data: courses } = useCourses()
-  const { data: lecturers } = useLecturers()
   const [search, setSearch] = useState('')
 
   const courseById = useMemo(() => Object.fromEntries(courses.map((c) => [c.id, c])), [courses])
-  const lecturerById = useMemo(
-    () => Object.fromEntries(lecturers.map((l) => [l.id, l])),
-    [lecturers]
-  )
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
     if (!query) return materials
     return materials.filter((material) => {
-      const lecturer = lecturerById[material.lecturerId]
       const course = courseById[material.courseId]
       return (
-        material.fileName?.toLowerCase().includes(query) ||
-        lecturer?.fullName?.toLowerCase().includes(query) ||
+        material.title?.toLowerCase().includes(query) ||
+        material.originalFilename?.toLowerCase().includes(query) ||
+        material.uploadedByName?.toLowerCase().includes(query) ||
         course?.name?.toLowerCase().includes(query)
       )
     })
-  }, [materials, search, lecturerById, courseById])
+  }, [materials, search, courseById])
 
   const handleDownload = async (material) => {
-    const url = await getMaterialDownloadUrl(material)
+    const { url } = await getLectureMaterialDownload(material.id)
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   const columns = [
     {
-      key: 'fileName',
+      key: 'title',
       header: 'File',
       render: (row) => (
         <button
@@ -52,11 +46,11 @@ export default function StaffMaterialsPage() {
           onClick={() => handleDownload(row)}
           className="font-medium text-foreground hover:text-primary hover:underline"
         >
-          {row.fileName}
+          {row.title ?? row.originalFilename}
         </button>
       ),
     },
-    { key: 'lecturer', header: 'Lecturer', render: (row) => lecturerById[row.lecturerId]?.fullName ?? '-' },
+    { key: 'lecturer', header: 'Uploaded by', render: (row) => row.uploadedByName || '-' },
     { key: 'course', header: 'Course', render: (row) => courseById[row.courseId]?.name ?? '-' },
     {
       key: 'uploadedAt',

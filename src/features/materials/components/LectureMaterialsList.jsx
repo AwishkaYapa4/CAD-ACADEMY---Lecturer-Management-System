@@ -12,9 +12,26 @@ import { useDeleteLectureMaterial, useLectureMaterialDownload } from '@/features
 import { toDate } from '@/utils/formatters'
 
 function formatSize(bytes) {
-  if (!bytes) return '—'
+  if (!bytes || typeof bytes !== 'number') return '—'
   const mb = bytes / (1024 * 1024)
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`
+}
+
+/**
+ * `uploadedAt` may arrive as a Firestore Timestamp instance, a plain
+ * `{seconds,nanoseconds}`/`{_seconds,_nanoseconds}` object, a Date, an ISO
+ * string, or be missing entirely on an old/incomplete document. `toDate()`
+ * normalizes all of those to a valid `Date` or `null` — never an invalid one
+ * — so `format()` never receives a value it can throw on.
+ */
+function formatMaterialDate(value) {
+  const date = toDate(value)
+  if (!date) return 'Date unavailable'
+  try {
+    return format(date, 'MMM d, yyyy')
+  } catch {
+    return 'Date unavailable'
+  }
 }
 
 function groupByWeek(materials) {
@@ -104,14 +121,16 @@ export function LectureMaterialsList({ materials, loading, canDelete, getCourseN
     <div key={material.id} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
       <FileText className="size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">{material.title}</p>
+        <p className="truncate text-sm font-medium text-foreground">
+          {material.title || material.originalFilename || 'Untitled Material'}
+        </p>
         <p className="truncate text-xs text-muted-foreground">
-          {material.originalFilename} · {formatSize(material.sizeBytes)}
-          {material.uploadedAt ? ` · Uploaded ${format(toDate(material.uploadedAt), 'MMM d, yyyy')}` : ''}
+          {material.originalFilename || 'Unknown file'} · {formatSize(material.sizeBytes)} · Uploaded{' '}
+          {formatMaterialDate(material.uploadedAt)}
         </p>
       </div>
       <Badge variant="outline" className="uppercase">
-        {material.format}
+        {material.format || 'FILE'}
       </Badge>
       <Button
         variant="ghost"

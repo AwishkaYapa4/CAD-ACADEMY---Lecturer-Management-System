@@ -48,6 +48,13 @@ export async function listMaterialsByUploader(uid) {
   return materials
 }
 
+export async function listAllMaterials() {
+  const snap = await db.collection(COLLECTION).get()
+  const materials = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  materials.sort((a, b) => (b.uploadedAt?.toMillis?.() ?? 0) - (a.uploadedAt?.toMillis?.() ?? 0))
+  return materials
+}
+
 export async function deleteMaterial(id) {
   await db.collection(COLLECTION).doc(id).delete()
 }

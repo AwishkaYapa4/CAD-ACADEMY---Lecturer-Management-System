@@ -9,6 +9,20 @@ import { monthKeyFor, summarizeMonth } from '@/features/payments/utils/monthlyCa
 import { useLecturerSchedules, useSchedules } from '@/features/schedules/hooks/useSchedules'
 import { toDate } from '@/utils/formatters'
 
+const RECEIVED_PAYMENT_VISIBLE_DAYS = 15
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+function getPaymentReceivedDate(payment) {
+  return toDate(payment.paidAt ?? payment.updatedAt ?? payment.createdAt)
+}
+
+function isPaymentReceivedRecently(payment, now = new Date()) {
+  if (payment.status !== PAYMENT_CYCLE_STATUS.PAID) return true
+  const receivedDate = getPaymentReceivedDate(payment)
+  if (!receivedDate) return true
+  return now.getTime() - receivedDate.getTime() < RECEIVED_PAYMENT_VISIBLE_DAYS * MS_PER_DAY
+}
+
 /**
  * Same rule-matching/grouping logic as PaymentReadinessList, extracted so
  * dashboards can show a "Payment Ready" count without re-implementing the
@@ -60,13 +74,15 @@ export function usePaymentReadinessSummary(lecturerId, monthKey = monthKeyFor())
     [rules, lecturerId, monthKey]
   )
 
-  // Paid payments stay visible as received history, but they no longer lock
-  // the whole month; only the reports marked paymentProcessed are excluded
-  // from the next payable row.
+  // Paid payments stay visible as received history for 15 days, but they no
+  // longer lock the whole month; only the reports marked paymentProcessed are
+  // excluded from the next payable row.
   const paidPaymentByRuleMonth = useMemo(() => {
     const byKey = {}
+    const now = new Date()
     payments
       .filter((p) => [PAYMENT_CYCLE_STATUS.APPROVED, PAYMENT_CYCLE_STATUS.PAID].includes(p.status))
+      .filter((p) => isPaymentReceivedRecently(p, now))
       .forEach((payment) => {
         const key = `${payment.paymentRuleId}__${payment.periodMonth}`
         byKey[key] = byKey[key] ?? { ...payment, id: key, completedClassCount: 0 }

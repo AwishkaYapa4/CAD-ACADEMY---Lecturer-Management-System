@@ -54,6 +54,10 @@ export function getMyLectureMaterials() {
   return apiFetch('/api/materials/mine').then((res) => res.materials)
 }
 
+export function getAllLectureMaterials() {
+  return apiFetch('/api/materials').then((res) => res.materials)
+}
+
 /** Returns { url, expiresAt, originalFilename, title } — a short-lived signed R2 URL. */
 export function getLectureMaterialDownload(materialId) {
   return apiFetch(`/api/materials/${materialId}/download`)

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   deleteLectureMaterial,
+  getAllLectureMaterials,
   getCourseMaterials,
   getLectureMaterialDownload,
   getMyLectureMaterials,
@@ -10,6 +11,7 @@ import {
 
 const courseMaterialsKey = (courseId) => ['courseMaterials', courseId]
 const myMaterialsKey = ['courseMaterials', 'mine']
+const allMaterialsKey = ['courseMaterials', 'all']
 
 /**
  * Unlike the rest of this app's data hooks, this isn't a realtime Firestore
@@ -45,6 +47,19 @@ export function useMyLectureMaterials() {
   }
 }
 
+export function useAllLectureMaterials() {
+  const query = useQuery({
+    queryKey: allMaterialsKey,
+    queryFn: getAllLectureMaterials,
+  })
+  return {
+    data: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error,
+    refetch: query.refetch,
+  }
+}
+
 export function useUploadLectureMaterial() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -53,6 +68,7 @@ export function useUploadLectureMaterial() {
     onSuccess: (material) => {
       queryClient.invalidateQueries({ queryKey: courseMaterialsKey(material.courseId) })
       queryClient.invalidateQueries({ queryKey: myMaterialsKey })
+      queryClient.invalidateQueries({ queryKey: allMaterialsKey })
     },
   })
 }
@@ -64,6 +80,7 @@ export function useDeleteLectureMaterial() {
     onSuccess: (_, { courseId }) => {
       queryClient.invalidateQueries({ queryKey: courseMaterialsKey(courseId) })
       queryClient.invalidateQueries({ queryKey: myMaterialsKey })
+      queryClient.invalidateQueries({ queryKey: allMaterialsKey })
     },
   })
 }

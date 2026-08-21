@@ -18,7 +18,7 @@ import { DataTable } from '@/components/common/DataTable'
 import { PageHeader } from '@/components/common/PageHeader'
 import { StatusPill } from '@/components/common/StatusPill'
 import { ROUTES } from '@/constants/routes'
-import { useBatches, useSetBatchActive } from '@/features/batches/hooks/useBatches'
+import { useBatches, useDeleteBatch, useSetBatchActive } from '@/features/batches/hooks/useBatches'
 import { deriveBatchStatus } from '@/features/batches/services/batchService'
 import { BatchFormDialog } from '@/features/batches/components/BatchFormDialog'
 import { useCourses } from '@/features/courses/hooks/useCourses'
@@ -31,10 +31,12 @@ export default function BatchesListPage() {
   const { data: courses } = useCourses()
   const { data: lecturers } = useLecturers()
   const setBatchActive = useSetBatchActive()
+  const deleteBatch = useDeleteBatch()
 
   const [search, setSearch] = useState('')
   const [formState, setFormState] = useState({ open: false, batch: null })
   const [activeTarget, setActiveTarget] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const courseById = useMemo(() => Object.fromEntries(courses.map((c) => [c.id, c])), [courses])
   const lecturerById = useMemo(
@@ -132,6 +134,9 @@ export default function BatchesListPage() {
                   Deactivate
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(row)}>
+                Delete
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -149,6 +154,17 @@ export default function BatchesListPage() {
       setActiveTarget(null)
     } catch {
       toast.error('Failed to update batch')
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      await deleteBatch.mutateAsync(deleteTarget.id)
+      toast.success('Batch deleted')
+      setDeleteTarget(null)
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete batch')
     }
   }
 
@@ -203,6 +219,21 @@ export default function BatchesListPage() {
         destructive={activeTarget?.active !== false}
         loading={setBatchActive.isPending}
         onConfirm={handleConfirmActiveChange}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete this batch?"
+        description={
+          deleteTarget
+            ? `"${deleteTarget.batchCode}" will be permanently deleted. Class schedules, reports, and payment rules already linked to it are not removed automatically — only delete a batch with no recorded activity.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        loading={deleteBatch.isPending}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   )

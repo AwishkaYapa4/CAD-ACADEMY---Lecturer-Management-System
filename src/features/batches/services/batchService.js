@@ -38,6 +38,17 @@ export async function setBatchActive(batchId, active) {
   await batchesCollection.update(batchId, { active })
 }
 
+/**
+ * Permanently removes a batch document. Does not cascade — any class
+ * schedules, reports, or payment rules already scoped to this batchId are
+ * left in place, so this is meant for batches with no recorded activity
+ * (see the confirmation copy in BatchesListPage). Deactivating (setBatchActive)
+ * is the reversible alternative for a batch that already has history.
+ */
+export async function deleteBatch(batchId) {
+  await batchesCollection.remove(batchId)
+}
+
 /** Derives a display status since there's no server-side transition — purely a function of dates/progress. */
 export function deriveBatchStatus(batch) {
   const now = new Date()

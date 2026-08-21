@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -54,6 +54,10 @@ export default function SubmitReportPage() {
   const { data: courseMaterials, loading: courseMaterialsLoading } = useCourseMaterials(schedule?.courseId)
   const { data: course } = useCourse(schedule?.courseId)
   const { data: batch } = useBatch(schedule?.batchId)
+  const reportMaterials = useMemo(
+    () => courseMaterials.filter((material) => material.scheduleId === scheduleId),
+    [courseMaterials, scheduleId]
+  )
 
   const saveDraft = useSaveReportDraft()
   const submitReport = useSubmitReport()
@@ -189,10 +193,10 @@ export default function SubmitReportPage() {
             {report.homework ? <InfoField label="Homework" value={report.homework} block /> : null}
             {report.remarks ? <InfoField label="Remarks" value={report.remarks} block /> : null}
 
-            {courseMaterials.length > 0 ? (
+            {reportMaterials.length > 0 ? (
               <div className="space-y-2 border-t border-border pt-4">
                 <p className="text-xs font-medium text-muted-foreground uppercase">Materials</p>
-                <LectureMaterialsList materials={courseMaterials} loading={courseMaterialsLoading} />
+                <LectureMaterialsList materials={reportMaterials} loading={courseMaterialsLoading} />
               </div>
             ) : null}
           </CardContent>

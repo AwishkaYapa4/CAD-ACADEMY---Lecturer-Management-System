@@ -107,6 +107,7 @@ export async function markPaymentPaid(paymentId, { paymentReference, officeNote 
   await paymentsCollection.update(paymentId, {
     status: PAYMENT_CYCLE_STATUS.PAID,
     paidAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
     paymentReference: paymentReference || '',
     officeNote: officeNote || '',
   })
@@ -116,6 +117,7 @@ export async function confirmPaymentReceived(paymentId) {
   await paymentsCollection.update(paymentId, {
     status: PAYMENT_CYCLE_STATUS.PAID,
     paidAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   })
 }
 

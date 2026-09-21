@@ -13,6 +13,7 @@ import { useCourses } from '@/features/courses/hooks/useCourses'
 import { useLecturers } from '@/features/lecturers/hooks/useLecturers'
 import { PaymentRuleFormDialog } from '@/features/paymentRules/components/PaymentRuleFormDialog'
 import {
+  useDeletePaymentRule,
   usePaymentRuleAmount,
   usePaymentRules,
   useSetPaymentRuleActive,
@@ -42,9 +43,11 @@ export default function PaymentRulesListPage() {
   const { data: courses } = useCourses()
   const { data: batches } = useBatches()
   const setActive = useSetPaymentRuleActive()
+  const deleteRule = useDeletePaymentRule()
 
   const [formState, setFormState] = useState({ open: false, rule: null })
   const [activeTarget, setActiveTarget] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const lecturerById = useMemo(
     () => Object.fromEntries(lecturers.map((l) => [l.id, l])),
@@ -117,6 +120,9 @@ export default function PaymentRulesListPage() {
             >
               {row.active === false ? 'Enable' : 'Disable'}
             </Button>
+            <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(row)}>
+              Delete
+            </Button>
           </div>
         )
       },
@@ -132,6 +138,17 @@ export default function PaymentRulesListPage() {
       setActiveTarget(null)
     } catch {
       toast.error('Failed to update rule')
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      await deleteRule.mutateAsync(deleteTarget.id)
+      toast.success('Rule deleted')
+      setDeleteTarget(null)
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete rule')
     }
   }
 
@@ -171,6 +188,17 @@ export default function PaymentRulesListPage() {
         destructive={activeTarget?.active !== false}
         loading={setActive.isPending}
         onConfirm={handleConfirmActiveChange}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete this rule?"
+        description="This payment rule and its saved monthly amount will be permanently deleted."
+        confirmLabel="Delete"
+        destructive
+        loading={deleteRule.isPending}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   )

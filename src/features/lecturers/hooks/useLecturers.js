@@ -5,6 +5,7 @@ import { useFirestoreDoc } from '@/hooks/useFirestoreDoc'
 import { orderBy } from '@/services/firestoreService'
 import {
   createLecturer,
+  deleteLecturer,
   lecturersCollection,
   setLecturerStatus,
   updateLecturer,
@@ -34,5 +35,11 @@ export function useUpdateLecturer() {
 export function useSetLecturerStatus() {
   return useMutation({
     mutationFn: ({ lecturer, active }) => setLecturerStatus(lecturer, active),
+  })
+}
+
+export function useDeleteLecturer() {
+  return useMutation({
+    mutationFn: (lecturer) => deleteLecturer(lecturer),
   })
 }

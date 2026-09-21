@@ -15,19 +15,21 @@ import { DataTable } from '@/components/common/DataTable'
 import { PageHeader } from '@/components/common/PageHeader'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { CourseFormDialog } from '@/features/courses/components/CourseFormDialog'
-import { useCourses, useSetCourseActive } from '@/features/courses/hooks/useCourses'
+import { useCourses, useDeleteCourse, useSetCourseActive } from '@/features/courses/hooks/useCourses'
 import { useLecturers } from '@/features/lecturers/hooks/useLecturers'
 
 export default function CoursesListPage() {
   const { data: courses, loading } = useCourses()
   const { data: lecturers } = useLecturers()
   const setCourseActive = useSetCourseActive()
+  const deleteCourse = useDeleteCourse()
   const lecturerName = (lecturerId) =>
     lecturers.find((lecturer) => lecturer.id === lecturerId)?.fullName
 
   const [search, setSearch] = useState('')
   const [formState, setFormState] = useState({ open: false, course: null })
   const [activeTarget, setActiveTarget] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -91,6 +93,9 @@ export default function CoursesListPage() {
                 Deactivate
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(row)}>
+              Delete
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -107,6 +112,18 @@ export default function CoursesListPage() {
       setActiveTarget(null)
     } catch {
       toast.error('Failed to update course')
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+
+    try {
+      await deleteCourse.mutateAsync(deleteTarget.id)
+      toast.success('Course deleted')
+      setDeleteTarget(null)
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete course')
     }
   }
 
@@ -160,6 +177,21 @@ export default function CoursesListPage() {
         destructive={activeTarget?.active !== false}
         loading={setCourseActive.isPending}
         onConfirm={handleConfirmActiveChange}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete this course?"
+        description={
+          deleteTarget
+            ? `"${deleteTarget.name}" will be permanently deleted. Existing batches or payment rules that reference it are not removed automatically.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        loading={deleteCourse.isPending}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   )

@@ -6,6 +6,7 @@ import {
   COURSE_ORDER,
   coursesCollection,
   createCourse,
+  deleteCourse,
   setCourseActive,
   updateCourse,
 } from '@/features/courses/services/courseService'
@@ -31,5 +32,11 @@ export function useUpdateCourse() {
 export function useSetCourseActive() {
   return useMutation({
     mutationFn: ({ courseId, active }) => setCourseActive(courseId, active),
+  })
+}
+
+export function useDeleteCourse() {
+  return useMutation({
+    mutationFn: (courseId) => deleteCourse(courseId),
   })
 }

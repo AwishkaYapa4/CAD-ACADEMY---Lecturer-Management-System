@@ -6,6 +6,7 @@ import {
   PAYMENT_RULE_ORDER,
   createPaymentRule,
   createPaymentRulesForScopes,
+  deletePaymentRule,
   getPaymentRuleAmount,
   lecturerRuleConstraints,
   paymentRulesCollection,
@@ -116,6 +117,14 @@ export function useSetPaymentRuleActive() {
   return useMutation({
     mutationFn: async ({ ruleId, active }) => {
       await setPaymentRuleActive(ruleId, active)
+    },
+  })
+}
+
+export function useDeletePaymentRule() {
+  return useMutation({
+    mutationFn: async (ruleId) => {
+      await deletePaymentRule(ruleId)
     },
   })
 }

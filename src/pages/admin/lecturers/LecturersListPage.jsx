@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MoreHorizontal, Plus, Search, UserRoundX, UserRoundCheck } from 'lucide-react'
+import { MoreHorizontal, Plus, Search, Trash2, UserRoundX, UserRoundCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -27,7 +27,11 @@ import { LECTURER_STATUS } from '@/constants/statuses'
 import { ROUTES } from '@/constants/routes'
 import { getInitials } from '@/utils/formatters'
 import { LecturerFormDialog } from '@/features/lecturers/components/LecturerFormDialog'
-import { useLecturers, useSetLecturerStatus } from '@/features/lecturers/hooks/useLecturers'
+import {
+  useDeleteLecturer,
+  useLecturers,
+  useSetLecturerStatus,
+} from '@/features/lecturers/hooks/useLecturers'
 
 function statusOf(lecturer) {
   return lecturer.active === false ? LECTURER_STATUS.INACTIVE : LECTURER_STATUS.ACTIVE
@@ -36,12 +40,14 @@ function statusOf(lecturer) {
 export default function LecturersListPage() {
   const { data: lecturers, loading } = useLecturers()
   const setLecturerStatus = useSetLecturerStatus()
+  const deleteLecturer = useDeleteLecturer()
   const navigate = useNavigate()
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [formState, setFormState] = useState({ open: false, lecturer: null })
   const [statusTarget, setStatusTarget] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -113,6 +119,9 @@ export default function LecturersListPage() {
                 <UserRoundCheck /> Reactivate
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(row)}>
+              <Trash2 /> Delete
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -129,6 +138,18 @@ export default function LecturersListPage() {
       setStatusTarget(null)
     } catch {
       toast.error('Failed to update lecturer status')
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+
+    try {
+      await deleteLecturer.mutateAsync(deleteTarget)
+      toast.success('Lecturer deleted')
+      setDeleteTarget(null)
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete lecturer')
     }
   }
 
@@ -206,6 +227,21 @@ export default function LecturersListPage() {
         destructive={Boolean(statusTarget) && statusOf(statusTarget) === LECTURER_STATUS.ACTIVE}
         loading={setLecturerStatus.isPending}
         onConfirm={handleConfirmStatusChange}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete this lecturer?"
+        description={
+          deleteTarget
+            ? `"${deleteTarget.fullName}" will be permanently deleted from lecturers and users. Existing classes, batches, courses, and payments that reference this lecturer are not removed automatically.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        loading={deleteLecturer.isPending}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   )

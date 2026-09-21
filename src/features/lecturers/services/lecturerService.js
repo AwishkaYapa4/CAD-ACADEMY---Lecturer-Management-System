@@ -78,3 +78,14 @@ export async function setLecturerStatus(lecturer, active) {
 
   await batch.commit()
 }
+
+export async function deleteLecturer(lecturer) {
+  const batch = writeBatch(db)
+
+  batch.delete(doc(db, COLLECTIONS.LECTURERS, lecturer.id))
+  if (lecturer.userId) {
+    batch.delete(doc(db, COLLECTIONS.USERS, lecturer.userId))
+  }
+
+  await batch.commit()
+}

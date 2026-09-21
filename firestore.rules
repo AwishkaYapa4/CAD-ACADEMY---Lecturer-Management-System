@@ -74,7 +74,9 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (request.auth.uid == userId
             && onlyAffects(['phone', 'avatarUrl', 'lastLoginAt', 'updatedAt']));
-      allow delete: if false;
+      allow delete: if isAdmin()
+        && request.auth.uid != userId
+        && resource.data.role == 'lecturer';
     }
 
     // ---------------------------------------------------------------------
@@ -252,7 +254,7 @@ service cloud.firestore {
         && resource.data.lecturerId == myLecturerId()
         && resource.data.status == 'approved'
         && request.resource.data.status == 'paid'
-        && onlyAffects(['status', 'paidAt']);
+        && onlyAffects(['status', 'paidAt', 'updatedAt']);
 
       match /private/{docId} {
         allow read: if isStaffOrAdmin()

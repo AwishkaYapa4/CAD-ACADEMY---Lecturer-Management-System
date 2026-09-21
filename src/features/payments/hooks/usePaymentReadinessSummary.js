@@ -6,21 +6,15 @@ import { useLecturerPaymentRules, usePaymentRules } from '@/features/paymentRule
 import { matchPaymentRuleForScope } from '@/features/paymentRules/utils/matchRule'
 import { useLecturerPayments, usePayments } from '@/features/payments/hooks/usePayments'
 import { monthKeyFor, summarizeMonth } from '@/features/payments/utils/monthlyCalc'
+import { isPaymentReceivedVisible } from '@/features/payments/utils/receivedVisibility'
 import { useLecturerSchedules, useSchedules } from '@/features/schedules/hooks/useSchedules'
 import { toDate } from '@/utils/formatters'
 
-const RECEIVED_PAYMENT_VISIBLE_DAYS = 15
-const MS_PER_DAY = 24 * 60 * 60 * 1000
-
-function getPaymentReceivedDate(payment) {
-  return toDate(payment.paidAt ?? payment.updatedAt ?? payment.createdAt)
-}
-
-function isPaymentReceivedRecently(payment, now = new Date()) {
-  if (payment.status !== PAYMENT_CYCLE_STATUS.PAID) return true
-  const receivedDate = getPaymentReceivedDate(payment)
-  if (!receivedDate) return true
-  return now.getTime() - receivedDate.getTime() < RECEIVED_PAYMENT_VISIBLE_DAYS * MS_PER_DAY
+function addPaymentToRuleMonth(map, payment) {
+  const key = `${payment.paymentRuleId}__${payment.periodMonth}`
+  map[key] = map[key] ?? { ...payment, completedClassCount: 0 }
+  map[key].completedClassCount += payment.completedClassCount ?? 0
+  return map
 }
 
 /**
@@ -74,20 +68,24 @@ export function usePaymentReadinessSummary(lecturerId, monthKey = monthKeyFor())
     [rules, lecturerId, monthKey]
   )
 
-  // Paid payments stay visible as received history for 15 days, but they no
-  // longer lock the whole month; only the reports marked paymentProcessed are
-  // excluded from the next payable row.
-  const paidPaymentByRuleMonth = useMemo(() => {
+  // Processed payments keep their class reports locked forever, but the
+  // dashboard's "Payment Received" panel only keeps approved/paid records
+  // visible for the first 15 days after review/payment.
+  const processedPaymentByRuleMonth = useMemo(() => {
+    const byKey = {}
+    payments
+      .filter((p) => [PAYMENT_CYCLE_STATUS.APPROVED, PAYMENT_CYCLE_STATUS.PAID].includes(p.status))
+      .forEach((payment) => addPaymentToRuleMonth(byKey, payment))
+    return byKey
+  }, [payments])
+
+  const visibleReceivedPaymentByRuleMonth = useMemo(() => {
     const byKey = {}
     const now = new Date()
     payments
       .filter((p) => [PAYMENT_CYCLE_STATUS.APPROVED, PAYMENT_CYCLE_STATUS.PAID].includes(p.status))
-      .filter((p) => isPaymentReceivedRecently(p, now))
-      .forEach((payment) => {
-        const key = `${payment.paymentRuleId}__${payment.periodMonth}`
-        byKey[key] = byKey[key] ?? { ...payment, id: key, completedClassCount: 0 }
-        byKey[key].completedClassCount += payment.completedClassCount ?? 0
-      })
+      .filter((p) => isPaymentReceivedVisible(p, now))
+      .forEach((payment) => addPaymentToRuleMonth(byKey, payment))
     return byKey
   }, [payments])
 
@@ -126,13 +124,14 @@ export function usePaymentReadinessSummary(lecturerId, monthKey = monthKeyFor())
       )
       const payableCompleted = completedSchedules.length
       const paidKey = `${rule.id}__${monthKey}`
-      const paidPayment = paidPaymentByRuleMonth[paidKey]
+      const processedPayment = processedPaymentByRuleMonth[paidKey]
+      const visibleReceivedPayment = visibleReceivedPaymentByRuleMonth[paidKey]
       const rowsForRule = []
       // Readiness is driven by completed classes against the rule's
       // configured monthlyClassCount, not by how many classes were actually
       // scheduled that month (totalScheduled is informational display only —
       // see calculateMonthlyPayment in monthlyCalc.js).
-      if (!paidPayment || payableCompleted > 0) {
+      if (!processedPayment || payableCompleted > 0) {
         rowsForRule.push({
           rowKey: `${rule.id}__pending__${monthKey}`,
           kind: 'pending',
@@ -147,15 +146,15 @@ export function usePaymentReadinessSummary(lecturerId, monthKey = monthKeyFor())
         })
       }
 
-      if (paidPayment) {
+      if (visibleReceivedPayment) {
         rowsForRule.push({
-          rowKey: `${rule.id}__paid__${paidPayment.id ?? monthKey}`,
+          rowKey: `${rule.id}__paid__${visibleReceivedPayment.id ?? monthKey}`,
           kind: 'paid',
           rule,
-          payment: paidPayment,
+          payment: visibleReceivedPayment,
           monthKey,
           totalScheduled,
-          completed: paidPayment.completedClassCount ?? 0,
+          completed: visibleReceivedPayment.completedClassCount ?? 0,
           payableCompleted: 0,
           completedSchedules: [],
           alreadyPaid: true,
@@ -165,7 +164,7 @@ export function usePaymentReadinessSummary(lecturerId, monthKey = monthKeyFor())
 
       return rowsForRule
     })
-  }, [schedules, activeRules, monthKey, paidPaymentByRuleMonth, reportByScheduleId])
+  }, [schedules, activeRules, monthKey, processedPaymentByRuleMonth, visibleReceivedPaymentByRuleMonth, reportByScheduleId])
 
   return {
     loading: rulesLoading || schedulesLoading || paymentsLoading || reportsLoading,

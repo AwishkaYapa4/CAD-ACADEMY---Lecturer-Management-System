@@ -1,4 +1,4 @@
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore'
 
 import { db } from '@/config/firebase'
 import { COLLECTIONS, PRIVATE_AMOUNT_DOC_ID, PRIVATE_SUBCOLLECTION } from '@/constants/collections'
@@ -170,4 +170,13 @@ export async function updatePaymentRule(
 
 export async function setPaymentRuleActive(ruleId, active) {
   await paymentRulesCollection.update(ruleId, { active })
+}
+
+export async function deletePaymentRule(ruleId) {
+  const batch = writeBatch(db)
+
+  batch.delete(privateAmountRef(ruleId))
+  batch.delete(paymentRulesCollection.docRef(ruleId))
+
+  await batch.commit()
 }

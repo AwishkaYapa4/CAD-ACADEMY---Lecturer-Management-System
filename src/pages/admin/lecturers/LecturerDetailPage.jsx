@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowLeft, Layers, Mail, UserRoundCheck, UserRoundX } from 'lucide-react'
+import { ArrowLeft, Layers, Mail, Trash2, UserRoundCheck, UserRoundX } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -19,7 +19,11 @@ import { useCourses } from '@/features/courses/hooks/useCourses'
 import { deriveBatchStatus } from '@/features/batches/services/batchService'
 import { useLecturerBatches } from '@/features/batches/hooks/useBatches'
 import { LecturerFormDialog } from '@/features/lecturers/components/LecturerFormDialog'
-import { useLecturer, useSetLecturerStatus } from '@/features/lecturers/hooks/useLecturers'
+import {
+  useDeleteLecturer,
+  useLecturer,
+  useSetLecturerStatus,
+} from '@/features/lecturers/hooks/useLecturers'
 import { useBreadcrumbLabel } from '@/hooks/useBreadcrumbLabel'
 import { getInitials, toDate } from '@/utils/formatters'
 
@@ -30,11 +34,13 @@ export default function LecturerDetailPage() {
   const { data: batches, loading: batchesLoading } = useLecturerBatches(lecturerId)
   const { data: courses } = useCourses()
   const setLecturerStatus = useSetLecturerStatus()
+  const deleteLecturer = useDeleteLecturer()
 
   const courseById = useMemo(() => Object.fromEntries(courses.map((c) => [c.id, c])), [courses])
 
   const [editOpen, setEditOpen] = useState(false)
   const [confirmStatusOpen, setConfirmStatusOpen] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   useBreadcrumbLabel(lecturerId, lecturer?.fullName)
 
@@ -74,6 +80,17 @@ export default function LecturerDetailPage() {
     }
   }
 
+  const handleConfirmDelete = async () => {
+    try {
+      await deleteLecturer.mutateAsync(lecturer)
+      toast.success('Lecturer permanently deleted')
+      setConfirmDeleteOpen(false)
+      navigate(ROUTES.ADMIN_LECTURERS)
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete lecturer')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Button
@@ -106,6 +123,9 @@ export default function LecturerDetailPage() {
                   <UserRoundCheck className="size-4" /> Reactivate
                 </>
               )}
+            </Button>
+            <Button variant="destructive" onClick={() => setConfirmDeleteOpen(true)}>
+              <Trash2 className="size-4" /> Delete
             </Button>
           </>
         }
@@ -209,6 +229,17 @@ export default function LecturerDetailPage() {
         destructive={isActive}
         loading={setLecturerStatus.isPending}
         onConfirm={handleConfirmStatusChange}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        title="Delete this lecturer?"
+        description={`${lecturer.fullName} will be permanently deleted from Lecturers and Users. Existing class, batch, report, and payment history will not be removed automatically.`}
+        confirmLabel="Delete"
+        destructive
+        loading={deleteLecturer.isPending}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   )

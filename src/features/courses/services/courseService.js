@@ -27,3 +27,7 @@ export async function updateCourse(courseId, { name, description, duration, lect
 export async function setCourseActive(courseId, active) {
   await coursesCollection.update(courseId, { active })
 }
+
+export async function deleteCourse(courseId) {
+  await coursesCollection.remove(courseId)
+}
